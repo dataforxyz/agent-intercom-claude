@@ -9,8 +9,8 @@
 set -u
 MODEL="${1:?usage: run.sh <model> <slug>}"
 SLUG="${2:?usage: run.sh <model> <slug>}"
-REPO="/home/dxyz/src/github.com/dataforxyz/claude-intercom"
-PROJ="/tmp/cci-e2e-$SLUG"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PROJ="${TMPDIR:-/tmp}/cci-e2e-$SLUG"
 WORKER="e2e-$SLUG"
 MGR_ID="mgr-$SLUG"
 CLAUDE_BIN="$(command -v claude)"

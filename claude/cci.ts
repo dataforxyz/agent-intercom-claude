@@ -16,6 +16,7 @@ export interface CciOptions {
   dangerouslySkipPermissions: boolean;
   addDirs: string[];
   mcpConfig?: string;
+  minimal: boolean;
   claudeCommand: string;
 }
 
@@ -80,6 +81,7 @@ function readValue(args: string[], index: number, option: string): string {
 export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): CciOptions {
   const options: Partial<CciOptions> & { addDirs: string[] } = { addDirs: [] };
   let dangerouslySkipPermissions: boolean | undefined;
+  let minimal = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -125,6 +127,10 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
         dangerouslySkipPermissions = false;
         options.permissionMode = options.permissionMode ?? "default";
         break;
+      case "--minimal":
+      case "--bare":
+        minimal = true;
+        break;
       default:
         break;
     }
@@ -141,6 +147,7 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     dangerouslySkipPermissions: dangerouslySkipPermissions ?? true,
     addDirs: options.addDirs,
     mcpConfig: options.mcpConfig,
+    minimal,
     claudeCommand: options.claudeCommand || env.CLAUDE_INTERCOM_CLAUDE_COMMAND || "claude",
   };
 }
@@ -150,6 +157,12 @@ export async function runCci(options: CciOptions): Promise<number> {
   const id = sanitizeSegment(options.id ?? identity.id);
   const name = options.name ?? identity.name;
   const statePath = options.statePath ?? DEFAULT_WORKER_STATE_PATH;
+
+  // Minimal mode runs each woken turn with Claude Code's --safe-mode, which
+  // disables CLAUDE.md, skills, plugins, hooks, MCP servers, and custom agents
+  // while keeping auth, built-in tools, and permissions working normally — the
+  // focused-worker analog of the Codex minimal profile.
+  const claudeArgs = options.minimal ? ["--safe-mode"] : undefined;
 
   const agent: WorkerAgentConfig = {
     id,
@@ -161,6 +174,7 @@ export async function runCci(options: CciOptions): Promise<number> {
     dangerouslySkipPermissions: options.dangerouslySkipPermissions,
     addDirs: options.addDirs.length ? options.addDirs : undefined,
     mcpConfig: options.mcpConfig,
+    claudeArgs,
   };
 
   const config: WorkerConfig = {
@@ -173,6 +187,9 @@ export async function runCci(options: CciOptions): Promise<number> {
   process.stderr.write(`Resume this worker's Claude session anytime with: claude --resume <session-id> (see ${statePath} once a turn has run)\n`);
   if (options.dangerouslySkipPermissions) {
     process.stderr.write("Running with --dangerously-skip-permissions (yolo). Pass --safe to opt out.\n");
+  }
+  if (options.minimal) {
+    process.stderr.write("Minimal mode: woken turns run with --safe-mode (no CLAUDE.md, skills, plugins, hooks, or MCP).\n");
   }
 
   const daemon = new ClaudeWorkerDaemon(config);

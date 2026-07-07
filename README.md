@@ -143,6 +143,38 @@ headless mode (headless turns cannot answer interactive permission prompts). Use
 <mode>` to choose one explicitly. Only run yolo workers on a machine account you
 trust.
 
+## Normal And Minimal Workers
+
+Like Codex's `coi` (normal) and `coim` (minimal), `cci` has a minimal mode. Codex
+needs a dedicated `CODEX_HOME` and a hand-written `config.toml` to strip
+memories, plugins, skills, and browser surfaces. Claude Code has this built in:
+`cci --minimal` runs every woken turn with Claude Code's `--safe-mode`, which
+disables CLAUDE.md, skills, plugins, hooks, MCP servers, and custom agents —
+while keeping auth, built-in tools (Bash/Read/Edit/…), and permissions working
+normally. It is the focused-worker profile: less prompt and tool surface, same
+coding ability.
+
+```bash
+cci --name worker-a --id worker-a               # normal: full config, CLAUDE.md, skills, MCP
+cci --minimal --name worker-a --id worker-a     # minimal: --safe-mode woken turns
+```
+
+A short alias keeps the pair ergonomic — `cci` for normal, `ccim` for minimal:
+
+```bash
+ccim() { cci --minimal "$@"; }
+
+cci  --name reviewer --id reviewer                 # normal worker
+ccim --name lean-worker --id lean-worker           # minimal worker
+ccim --safe --name lean-safe --id lean-safe        # minimal + standard permission prompts
+```
+
+Because minimal mode disables MCP in the woken turn, a minimal worker cannot use
+the intercom tools to message other sessions itself — it still receives work and
+replies normally (the worker daemon captures its final message and sends the
+reply). Use a normal worker when you want the woken turn to reach out to peers on
+its own.
+
 ## Manager And Worker Pattern
 
 Use one Claude Code session as the manager and one or more `cci` workers.

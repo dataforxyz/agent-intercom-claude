@@ -46,6 +46,12 @@ test("parseCciArgs --yolo is explicit and equivalent to the default posture", ()
   assert.equal(parsed.dangerouslySkipPermissions, true);
 });
 
+test("parseCciArgs minimal defaults to false and is enabled by --minimal/--bare", () => {
+  assert.equal(parseCciArgs([], {}).minimal, false);
+  assert.equal(parseCciArgs(["--minimal"], {}).minimal, true);
+  assert.equal(parseCciArgs(["--bare"], {}).minimal, true);
+});
+
 test("parseCciArgs --dangerously-skip-permissions behaves like --yolo", () => {
   const parsed = parseCciArgs(["--dangerously-skip-permissions"], {});
   assert.equal(parsed.dangerouslySkipPermissions, true);
