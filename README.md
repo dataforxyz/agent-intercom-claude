@@ -147,12 +147,19 @@ trust.
 
 Like Codex's `coi` (normal) and `coim` (minimal), `cci` has a minimal mode. Codex
 needs a dedicated `CODEX_HOME` and a hand-written `config.toml` to strip
-memories, plugins, skills, and browser surfaces. Claude Code has this built in:
-`cci --minimal` runs every woken turn with Claude Code's `--safe-mode`, which
-disables CLAUDE.md, skills, plugins, hooks, MCP servers, and custom agents —
-while keeping auth, built-in tools (Bash/Read/Edit/…), and permissions working
-normally. It is the focused-worker profile: less prompt and tool surface, same
-coding ability.
+memories, plugins, skills, and browser surfaces (while keeping `multi_agent`).
+Claude Code has this built in: `cci --minimal` runs every woken turn with Claude
+Code's `--safe-mode`, which disables CLAUDE.md, skills, plugins, hooks, and MCP
+servers while keeping auth, built-in tools (Bash/Read/Edit/…), and permissions
+working normally. It is the focused-worker profile: less prompt and tool surface,
+same coding ability.
+
+**Subagents are retained in minimal mode.** `--safe-mode` only disables *custom*
+agent-type definitions (`.claude/agents/`), not the built-in `Task` tool — so a
+minimal worker can still delegate to general-purpose subagents, matching Codex
+minimal's `multi_agent = true`. This is verified end-to-end
+(`test/e2e/minimal-subagent.sh`): a minimal worker spawns a subagent that runs a
+shell command and reports back.
 
 ```bash
 cci --name worker-a --id worker-a               # normal: full config, CLAUDE.md, skills, MCP

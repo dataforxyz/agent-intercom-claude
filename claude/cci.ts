@@ -159,9 +159,11 @@ export async function runCci(options: CciOptions): Promise<number> {
   const statePath = options.statePath ?? DEFAULT_WORKER_STATE_PATH;
 
   // Minimal mode runs each woken turn with Claude Code's --safe-mode, which
-  // disables CLAUDE.md, skills, plugins, hooks, MCP servers, and custom agents
-  // while keeping auth, built-in tools, and permissions working normally — the
-  // focused-worker analog of the Codex minimal profile.
+  // disables CLAUDE.md, skills, plugins, hooks, MCP servers, and *custom* agent
+  // definitions while keeping auth, built-in tools, and permissions working
+  // normally — the focused-worker analog of the Codex minimal profile. The
+  // built-in Task tool is retained, so a minimal worker can still delegate to
+  // general-purpose subagents (matching Codex minimal's multi_agent = true).
   const claudeArgs = options.minimal ? ["--safe-mode"] : undefined;
 
   const agent: WorkerAgentConfig = {
@@ -189,7 +191,7 @@ export async function runCci(options: CciOptions): Promise<number> {
     process.stderr.write("Running with --dangerously-skip-permissions (yolo). Pass --safe to opt out.\n");
   }
   if (options.minimal) {
-    process.stderr.write("Minimal mode: woken turns run with --safe-mode (no CLAUDE.md, skills, plugins, hooks, or MCP).\n");
+    process.stderr.write("Minimal mode: woken turns run with --safe-mode (no CLAUDE.md, skills, plugins, hooks, or MCP). Built-in tools and subagent delegation (Task tool) are retained.\n");
   }
 
   const daemon = new ClaudeWorkerDaemon(config);
