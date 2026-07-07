@@ -70,7 +70,8 @@ This provides:
 
 - `claude-intercom-mcp`
 - `claude-intercom-worker`
-- `cci`
+- `cci` — start a normal wakeable worker
+- `ccim` — start a minimal wakeable worker (`cci --minimal`)
 
 Then add the MCP server to Claude Code:
 
@@ -161,19 +162,15 @@ minimal's `multi_agent = true`. This is verified end-to-end
 (`test/e2e/minimal-subagent.sh`): a minimal worker spawns a subagent that runs a
 shell command and reports back.
 
-```bash
-cci --name worker-a --id worker-a               # normal: full config, CLAUDE.md, skills, MCP
-cci --minimal --name worker-a --id worker-a     # minimal: --safe-mode woken turns
-```
-
-A short alias keeps the pair ergonomic — `cci` for normal, `ccim` for minimal:
+`cci` and `ccim` are installed as a matched pair (like Codex's `coi` and `coim`):
+`ccim` is exactly `cci --minimal` — same flags, same identity handling, minimal
+by default. No shell alias needed.
 
 ```bash
-ccim() { cci --minimal "$@"; }
-
-cci  --name reviewer --id reviewer                 # normal worker
-ccim --name lean-worker --id lean-worker           # minimal worker
+cci  --name reviewer --id reviewer                 # normal: full config, CLAUDE.md, skills, MCP
+ccim --name lean-worker --id lean-worker           # minimal: --safe-mode woken turns
 ccim --safe --name lean-safe --id lean-safe        # minimal + standard permission prompts
+cci --minimal --name worker-a --id worker-a        # equivalent to `ccim ...`
 ```
 
 Because minimal mode disables MCP in the woken turn, a minimal worker cannot use

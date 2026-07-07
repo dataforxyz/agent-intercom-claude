@@ -32,10 +32,17 @@ await Promise.all([
     outfile: "dist/cci.mjs",
     banner: { js: "#!/usr/bin/env node" },
   }),
+  build({
+    ...common,
+    entryPoints: ["claude/ccim.ts"],
+    outfile: "dist/ccim.mjs",
+    banner: { js: "#!/usr/bin/env node" },
+  }),
 ]);
 
 await Promise.all([
   chmod("dist/claude-server.mjs", 0o755),
   chmod("dist/worker-daemon.mjs", 0o755),
   chmod("dist/cci.mjs", 0o755),
+  chmod("dist/ccim.mjs", 0o755),
 ]);

@@ -8,7 +8,8 @@
   "bin": {
     "claude-intercom-mcp": "dist/claude-server.mjs",
     "claude-intercom-worker": "dist/worker-daemon.mjs",
-    "cci": "dist/cci.mjs"
+    "cci": "dist/cci.mjs",
+    "ccim": "dist/ccim.mjs"
   },
   "files": [
     "assets/**/*",
@@ -30,6 +31,7 @@
     "claude:mcp": "tsx claude/server.ts",
     "claude:worker": "tsx claude/worker-daemon.ts",
     "cci": "tsx claude/cci.ts",
+    "ccim": "tsx claude/ccim.ts",
     "test": "tsx --test broker/client.test.ts broker/framing.test.ts broker/paths.test.ts broker/spawn.test.ts claude/*.test.ts"
   },
   "keywords": [
