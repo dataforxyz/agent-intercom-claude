@@ -89,6 +89,26 @@ claude mcp add claude-planner \
   -- claude-intercom-mcp
 ```
 
+## Plugin Use
+
+The repo also ships Claude Code plugin metadata:
+
+- `.claude-plugin/plugin.json`
+- `.mcp.json`
+- `skills/claude-intercom/SKILL.md`
+
+The plugin packages the MCP server and the bundled `claude-intercom` skill (which
+gives Claude copy-paste coordination patterns). Load it for a single session
+with `--plugin-dir`:
+
+```bash
+claude --plugin-dir /path/to/claude-intercom      # this session only
+```
+
+For the minimal tool surface, prefer plain MCP registration
+(`claude mcp add claude-intercom -- claude-intercom-mcp`) so you get the intercom
+tools without the skill.
+
 ## Tools
 
 - `intercom_whoami`: show this session's intercom ID, name, cwd, and model.
@@ -128,13 +148,28 @@ Start a named worker:
 cci --name worker-a --id worker-a
 ```
 
-Useful flags:
+Flags (all optional; `ccim` accepts the same set):
+
+| Flag | Meaning |
+|------|---------|
+| `--name <name>` | Discoverable session name other sessions target |
+| `--id <id>` | Stable intercom session id (defaults to a git-derived id) |
+| `--cwd <dir>` | Working directory for the worker's turns (default: cwd) |
+| `--model <model>` | Model for woken turns (`opus`, `sonnet`, `haiku`, or a full id) |
+| `--instructions <text>` | System-prompt guidance appended to every woken turn |
+| `--minimal` / `--bare` | Run woken turns with `--safe-mode` (see below); implied by `ccim` |
+| `--safe` | Use standard permission prompts instead of the yolo default |
+| `--permission-mode <mode>` | Explicit permission mode (`acceptEdits`, `plan`, …) |
+| `--add-dir <dir>` | Extra directory the worker may access (repeatable) |
+| `--mcp-config <json\|file>` | Extra MCP servers for woken turns (e.g. to give the worker intercom tools) |
+| `--state <path>` | Where to persist the worker's session id (default under `~/.pi/agent/intercom/`) |
+| `--claude <cmd>` | Claude Code executable to invoke (default `claude`) |
 
 ```bash
-cci --name api-worker --id api-worker
 cci --cwd /path/to/project --instructions "Reply tersely. Ask before destructive changes."
 cci --model opus --name reviewer --id reviewer
-cci --safe --name safe-worker --id safe-worker      # use default permission prompts instead of yolo
+cci --safe --name safe-worker --id safe-worker      # standard permission prompts instead of yolo
+cci --add-dir ../shared-lib --name worker-a --id worker-a
 ```
 
 By default `cci` runs the woken turns with
@@ -234,7 +269,26 @@ claude-intercom-worker --config /home/you/.pi/agent/intercom/claude-worker.json
 ```
 
 Each worker's `session_id` is persisted in `statePath`, so later messages resume
-the same Claude conversation.
+the same Claude conversation. The daemon reads a single worker's config from the
+environment when no config file is given (`CLAUDE_INTERCOM_WORKER_ID`, `…_NAME`,
+`…_CWD`, `…_MODEL`, `…_INSTRUCTIONS`, `…_STATE`).
+
+## Environment Variables
+
+| Variable | Used by | Purpose |
+|----------|---------|---------|
+| `CLAUDE_INTERCOM_NAME` | MCP server | Discoverable session name |
+| `CLAUDE_INTERCOM_SESSION_ID` | MCP server | Stable intercom id |
+| `CLAUDE_INTERCOM_MODEL` | MCP server | Model label shown to peers |
+| `CLAUDE_INTERCOM_CWD` / `_INSTRUCTIONS` | `cci` / `ccim` | Defaults for `--cwd` / `--instructions` |
+| `CLAUDE_INTERCOM_CLAUDE_COMMAND` | workers | Claude Code executable (default `claude`) |
+| `CLAUDE_INTERCOM_WORKER_ID` / `_NAME` / `_CWD` / `_MODEL` / `_INSTRUCTIONS` / `_STATE` | `claude-intercom-worker` | Single-worker config when no `--config` file is given |
+| `CLAUDE_INTERCOM_WORKER_CONFIG` | `claude-intercom-worker` | Path to the worker config JSON |
+| `PI_INTERCOM_ASK_TIMEOUT_MS` | all | Default blocking-ask timeout (≤ 120000) |
+| `PI_CODING_AGENT_DIR` | all | Overrides the `~/.pi/agent` base dir (broker socket + config live under it) |
+
+The `PI_*` names are shared with `pi-intercom` and `codex-intercom` on purpose —
+all three read the same broker location and ask-timeout so they interoperate.
 
 ## Development
 
