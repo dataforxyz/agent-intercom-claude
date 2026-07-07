@@ -1,0 +1,195 @@
+import { existsSync, readFileSync } from "fs";
+import { join, resolve } from "path";
+import { homedir } from "os";
+
+export const DEFAULT_ASK_TIMEOUT_MS = 45 * 1000;
+export const MAX_ASK_TIMEOUT_MS = 120 * 1000;
+
+export function validateAskTimeoutMs(value: unknown, name = "timeout_ms"): number {
+  if (!Number.isSafeInteger(value) || typeof value !== "number" || value <= 0) {
+    throw new Error(`${name} must be a positive integer number of milliseconds`);
+  }
+  if (value > MAX_ASK_TIMEOUT_MS) {
+    throw new Error(`${name} must be ${MAX_ASK_TIMEOUT_MS} ms or less; use intercom_send plus intercom_pending for longer-running work`);
+  }
+  return value;
+}
+
+export function getAskTimeoutMs(): number {
+  const raw = process.env.PI_INTERCOM_ASK_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_ASK_TIMEOUT_MS;
+  }
+
+  const value = Number(raw);
+  return validateAskTimeoutMs(value, "PI_INTERCOM_ASK_TIMEOUT_MS");
+}
+
+export interface InboundForkHandlersConfig {
+  /** Route inbound intercom messages to background fork handlers (default: true) */
+  enabled: boolean;
+
+  /** When to fork: automatically while parent is busy/queued, only while busy, or for all inbound messages */
+  when: "auto" | "busy" | "always";
+
+  /** Parent notification policy for launched handlers */
+  notify: "ack-and-summary" | "summary" | "none";
+
+  /** Optional Pi executable override for handler launch */
+  piCommand?: string;
+
+  /** Trigger a parent turn when the handler summary arrives (default: auto; ignored when notify is "none") */
+  triggerParentOnSummary: boolean | "auto";
+}
+
+export interface IntercomConfig {
+  /** Broker command used to spawn the broker process (e.g. "npx" or "bun") */
+  brokerCommand: string;
+
+  /** Arguments passed to the broker command before the broker script path */
+  brokerArgs: string[];
+
+  /** Require confirmation before non-reply sends from interactive sessions */
+  confirmSend: boolean;
+
+  /** Optional custom status suffix shown after automatic lifecycle status */
+  status?: string;
+
+  /** Enable/disable intercom (default: true) */
+  enabled: boolean;
+
+  /** Show reply hint in incoming messages (default: true) */
+  replyHint: boolean;
+
+  /** Optional inbound background fork-handler routing */
+  inboundForkHandlers: InboundForkHandlersConfig;
+}
+
+export function getConfigPath(): string {
+  const agentDir = process.env.PI_CODING_AGENT_DIR
+    ? resolve(process.env.PI_CODING_AGENT_DIR)
+    : join(homedir(), ".pi", "agent");
+  return join(agentDir, "intercom", "config.json");
+}
+
+const defaults: IntercomConfig = {
+  brokerCommand: "npx",
+  brokerArgs: ["--no-install", "tsx"],
+  confirmSend: false,
+  enabled: true,
+  replyHint: true,
+  inboundForkHandlers: {
+    enabled: true,
+    when: "auto",
+    notify: "summary",
+    triggerParentOnSummary: "auto",
+  },
+};
+
+export function loadConfig(): IntercomConfig {
+  const configPath = getConfigPath();
+  if (!existsSync(configPath)) {
+    return { ...defaults };
+  }
+
+  try {
+    const raw = readFileSync(configPath, "utf-8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("Config must be a JSON object");
+    }
+
+    const parsedConfig = parsed as Record<string, unknown>;
+    const config: IntercomConfig = { ...defaults };
+
+    if (Object.hasOwn(parsedConfig, "brokerCommand")) {
+      if (typeof parsedConfig.brokerCommand !== "string") {
+        throw new Error(`"brokerCommand" must be a string`);
+      }
+      const brokerCommand = parsedConfig.brokerCommand.trim();
+      if (!brokerCommand) {
+        throw new Error(`"brokerCommand" must not be empty`);
+      }
+      config.brokerCommand = brokerCommand;
+    }
+
+    if (Object.hasOwn(parsedConfig, "brokerArgs")) {
+      if (!Array.isArray(parsedConfig.brokerArgs)) {
+        throw new Error(`"brokerArgs" must be an array`);
+      }
+      const brokerArgs: string[] = [];
+      for (const arg of parsedConfig.brokerArgs) {
+        if (typeof arg !== "string") {
+          throw new Error(`"brokerArgs" items must be strings`);
+        }
+        brokerArgs.push(arg);
+      }
+      config.brokerArgs = brokerArgs;
+    }
+
+    if (Object.hasOwn(parsedConfig, "confirmSend")) {
+      if (typeof parsedConfig.confirmSend !== "boolean") {
+        throw new Error(`"confirmSend" must be a boolean`);
+      }
+      config.confirmSend = parsedConfig.confirmSend;
+    }
+
+    if (Object.hasOwn(parsedConfig, "enabled")) {
+      if (typeof parsedConfig.enabled !== "boolean") {
+        throw new Error(`"enabled" must be a boolean`);
+      }
+      config.enabled = parsedConfig.enabled;
+    }
+
+    if (Object.hasOwn(parsedConfig, "replyHint")) {
+      if (typeof parsedConfig.replyHint !== "boolean") {
+        throw new Error(`"replyHint" must be a boolean`);
+      }
+      config.replyHint = parsedConfig.replyHint;
+    }
+
+    if (Object.hasOwn(parsedConfig, "status")) {
+      if (typeof parsedConfig.status !== "string") {
+        throw new Error(`"status" must be a string`);
+      }
+      config.status = parsedConfig.status;
+    }
+
+    if (Object.hasOwn(parsedConfig, "inboundForkHandlers")) {
+      if (typeof parsedConfig.inboundForkHandlers !== "object" || parsedConfig.inboundForkHandlers === null || Array.isArray(parsedConfig.inboundForkHandlers)) {
+        throw new Error(`"inboundForkHandlers" must be an object`);
+      }
+      const forkConfig = parsedConfig.inboundForkHandlers as Record<string, unknown>;
+      config.inboundForkHandlers = { ...defaults.inboundForkHandlers };
+      if (Object.hasOwn(forkConfig, "enabled")) {
+        if (typeof forkConfig.enabled !== "boolean") throw new Error(`"inboundForkHandlers.enabled" must be a boolean`);
+        config.inboundForkHandlers.enabled = forkConfig.enabled;
+      }
+      if (Object.hasOwn(forkConfig, "when")) {
+        if (forkConfig.when !== "auto" && forkConfig.when !== "busy" && forkConfig.when !== "always") throw new Error(`"inboundForkHandlers.when" must be "auto", "busy", or "always"`);
+        config.inboundForkHandlers.when = forkConfig.when;
+      }
+      if (Object.hasOwn(forkConfig, "notify")) {
+        if (forkConfig.notify !== "ack-and-summary" && forkConfig.notify !== "summary" && forkConfig.notify !== "none") throw new Error(`"inboundForkHandlers.notify" must be "ack-and-summary", "summary", or "none"`);
+        config.inboundForkHandlers.notify = forkConfig.notify;
+      }
+      if (Object.hasOwn(forkConfig, "piCommand")) {
+        if (typeof forkConfig.piCommand !== "string") throw new Error(`"inboundForkHandlers.piCommand" must be a string`);
+        const piCommand = forkConfig.piCommand.trim();
+        if (piCommand) config.inboundForkHandlers.piCommand = piCommand;
+      }
+      if (Object.hasOwn(forkConfig, "triggerParentOnSummary")) {
+        const triggerParentOnSummary = forkConfig.triggerParentOnSummary;
+        if (typeof triggerParentOnSummary !== "boolean" && triggerParentOnSummary !== "auto") {
+          throw new Error(`"inboundForkHandlers.triggerParentOnSummary" must be a boolean or "auto"`);
+        }
+        config.inboundForkHandlers.triggerParentOnSummary = triggerParentOnSummary;
+      }
+    }
+
+    return config;
+  } catch (error) {
+    console.error(`Failed to load intercom config at ${configPath}:`, error);
+    return { ...defaults };
+  }
+}

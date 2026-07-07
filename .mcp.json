@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "claude-intercom": {
+      "command": "node",
+      "args": [
+        "./dist/claude-server.mjs"
+      ]
+    }
+  }
+}
