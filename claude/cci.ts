@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { ClaudeWorkerDaemon } from "./worker-daemon.ts";
 import { DEFAULT_WORKER_STATE_PATH, type WorkerAgentConfig, type WorkerConfig } from "./worker-config.ts";
@@ -221,7 +222,18 @@ async function main(): Promise<void> {
   process.exit(code);
 }
 
-if (process.argv[1] && (basename(process.argv[1]) === "cci.ts" || basename(process.argv[1]) === "cci.mjs")) {
+// Resolve the invoked path through realpath: when installed as an npm bin,
+// process.argv[1] is the symlink (e.g. .../bin/cci) whose basename lacks the
+// .mjs suffix, so match against the real bundle file (dist/cci.mjs) instead.
+function invokedFileBasename(): string {
+  try {
+    return process.argv[1] ? basename(realpathSync(process.argv[1])) : "";
+  } catch {
+    return process.argv[1] ? basename(process.argv[1]) : "";
+  }
+}
+
+if (invokedFileBasename() === "cci.ts" || invokedFileBasename() === "cci.mjs") {
   void main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
     process.exit(1);

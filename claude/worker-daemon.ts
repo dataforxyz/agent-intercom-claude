@@ -1,4 +1,5 @@
 import { once } from "node:events";
+import { realpathSync } from "node:fs";
 import { basename } from "node:path";
 import { runClaudeTurn } from "./cli-runner.ts";
 import {
@@ -194,7 +195,17 @@ async function main(): Promise<void> {
   await once(process, "SIGTERM");
 }
 
-if (process.argv[1] && (basename(process.argv[1]) === "worker-daemon.ts" || basename(process.argv[1]) === "worker-daemon.mjs")) {
+// See cci.ts: realpath the invoked path so the `claude-intercom-worker` npm-bin
+// symlink resolves to the real bundle file (worker-daemon.mjs) and triggers main.
+function invokedFileBasename(): string {
+  try {
+    return process.argv[1] ? basename(realpathSync(process.argv[1])) : "";
+  } catch {
+    return process.argv[1] ? basename(process.argv[1]) : "";
+  }
+}
+
+if (invokedFileBasename() === "worker-daemon.ts" || invokedFileBasename() === "worker-daemon.mjs") {
   void main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
     process.exit(1);
