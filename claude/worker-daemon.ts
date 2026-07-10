@@ -19,6 +19,29 @@ import { copyTextToClipboard, formatContactInstruction } from "./contact.ts";
 
 const MAX_WAKES_PER_MINUTE = 20;
 
+export type WorkerActivity =
+  | { type: "started"; agent: WorkerAgentConfig; from: SessionInfo; message: Message }
+  | { type: "completed"; agent: WorkerAgentConfig; from: SessionInfo; message: Message; result: string; sessionId: string | null }
+  | { type: "error"; agent: WorkerAgentConfig; from: SessionInfo; message: Message; error: string };
+
+export type WorkerActivityReporter = (activity: WorkerActivity) => void;
+
+export function formatWorkerActivity(activity: WorkerActivity): string {
+  const sender = activity.from.name || activity.from.id;
+  if (activity.type === "started") {
+    return `\n[intercom] Wake from ${sender}: ${activity.message.content.text}\n[intercom] Claude is working…\n`;
+  }
+  if (activity.type === "completed") {
+    const result = activity.result || "(Claude finished without a final message)";
+    return `[intercom] Completed wake from ${sender} (session ${activity.sessionId ?? "none"})\n${result}\n`;
+  }
+  return `[intercom] Wake from ${sender} failed: ${activity.error}\n`;
+}
+
+function reportToTerminal(activity: WorkerActivity): void {
+  process.stderr.write(formatWorkerActivity(activity));
+}
+
 function formatMessage(from: SessionInfo, message: Message, agent: WorkerAgentConfig): string {
   const replyInstruction = message.expectsReply
     ? [
@@ -54,6 +77,8 @@ export class VirtualClaudeAgent {
     private readonly state: WorkerState,
     private readonly statePath: string,
     private readonly claudeCommand: string,
+    private readonly reportActivity: WorkerActivityReporter = reportToTerminal,
+    private readonly runTurn: typeof runClaudeTurn = runClaudeTurn,
   ) {
     this.sessionId = agent.sessionId ?? state.agents[agent.id]?.sessionId ?? null;
   }
@@ -147,8 +172,9 @@ export class VirtualClaudeAgent {
     try {
       const prompt = formatMessage(from, message, this.agent);
       this.client.updatePresence({ status: "active" });
+      this.reportActivity({ type: "started", agent: this.agent, from, message });
 
-      const result = await runClaudeTurn({
+      const result = await this.runTurn({
         prompt,
         cwd: this.agent.cwd,
         sessionId: this.sessionId ?? undefined,
@@ -168,7 +194,21 @@ export class VirtualClaudeAgent {
         saveWorkerState(this.statePath, this.state);
       }
 
-      this.client.updatePresence({ status: "idle" });
+      if (result.isError) {
+        const text = result.result || "Claude exited with an error and no message";
+        this.client.updatePresence({ status: `error: ${text}` });
+        this.reportActivity({ type: "error", agent: this.agent, from, message, error: text });
+      } else {
+        this.client.updatePresence({ status: "idle" });
+        this.reportActivity({
+          type: "completed",
+          agent: this.agent,
+          from,
+          message,
+          result: result.result,
+          sessionId: this.sessionId,
+        });
+      }
 
       if (message.expectsReply) {
         await this.client.send(from.id, {
@@ -180,6 +220,7 @@ export class VirtualClaudeAgent {
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
       this.client.updatePresence({ status: `error: ${text}` });
+      this.reportActivity({ type: "error", agent: this.agent, from, message, error: text });
       if (message.expectsReply) {
         await this.client.send(from.id, {
           text: `Worker error: ${text}`,
@@ -195,14 +236,23 @@ export class VirtualClaudeAgent {
 export class ClaudeWorkerDaemon {
   private agents: VirtualClaudeAgent[] = [];
 
-  constructor(private readonly config: WorkerConfig) {}
+  constructor(
+    private readonly config: WorkerConfig,
+    private readonly reportActivity: WorkerActivityReporter = reportToTerminal,
+  ) {}
 
   async start(): Promise<void> {
     const intercomConfig = loadConfig();
     await spawnBrokerIfNeeded(intercomConfig.brokerCommand, intercomConfig.brokerArgs);
     const state = loadWorkerState(this.config.statePath);
     const claudeCommand = this.config.claudeCommand ?? "claude";
-    this.agents = this.config.agents.map((agent) => new VirtualClaudeAgent(agent, state, this.config.statePath, claudeCommand));
+    this.agents = this.config.agents.map((agent) => new VirtualClaudeAgent(
+      agent,
+      state,
+      this.config.statePath,
+      claudeCommand,
+      this.reportActivity,
+    ));
     for (const agent of this.agents) await agent.start();
     process.stderr.write(`claude-intercom worker running ${this.agents.length} agent(s)\n`);
   }

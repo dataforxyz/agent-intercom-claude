@@ -173,12 +173,18 @@ For longer work, use `intercom_send` and check later with `intercom_pending`.
 ## Wakeable Workers With `cci`
 
 `cci` (Claude Code Intercom) starts a single wakeable worker in the foreground.
-It registers the worker on the broker, then logs wake activity as messages
-arrive. Press **Alt+M** for a numbered list of connected peers, then choose one
-and enter a message. Press **Alt+I** to copy the worker's contact target. This is
-a lightweight terminal composer rather than a shared live Claude TUI; inspect
-the worker's conversation any time with `claude --resume <session-id>` (the ID
-is printed on each turn). `ccim` provides the same shortcuts.
+It registers the worker on the broker. For every inbound message, the attached
+terminal visibly prints the sender and message, a working indicator, and the
+final Claude result or error. Blocking asks still receive that final result as
+their automatic intercom reply. Press **Alt+M** for a numbered list of connected
+peers, then choose one and enter a message. Press **Alt+I** to copy the worker's
+contact target.
+
+This is an attached worker console, not Claude Code's interactive TUI: woken
+turns run through `claude -p`, and their final output is mirrored into the
+console. To continue or inspect the full Claude conversation, run `claude
+--resume <session-id>` using the session ID printed with the completed turn.
+`ccim` has the same visible wake behavior and shortcuts.
 
 Start a named worker:
 
