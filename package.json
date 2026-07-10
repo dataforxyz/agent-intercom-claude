@@ -37,7 +37,7 @@
     "cci": "tsx claude/cci.ts",
     "ccim": "tsx claude/ccim.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test broker/client.test.ts broker/framing.test.ts broker/paths.test.ts broker/spawn.test.ts outbound-outbox.test.ts claude/*.test.ts"
+    "test": "tsx --test broker/client.test.ts broker/framing.test.ts broker/ownership.test.ts broker/paths.test.ts broker/spawn.test.ts outbound-outbox.test.ts claude/*.test.ts"
   },
   "keywords": [
     "claude",
