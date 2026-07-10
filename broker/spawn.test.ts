@@ -3,16 +3,17 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import {
-  getBrokerScriptPath,
-  getEffectiveBrokerCommand,
   getBrokerLaunchSpec,
   getBrokerSpawnOptions,
   getTsxCliPath,
   getWindowsHiddenLauncherScript,
   getWindowsBrokerCommandLine,
   getWindowsHiddenLauncherPath,
+  isBrokerHealthOkMessage,
+  stopBrokerProcess,
 } from "./spawn.ts";
 
 test("getTsxCliPath resolves tsx cli via module resolution", () => {
@@ -23,37 +24,6 @@ test("getTsxCliPath resolves tsx cli via module resolution", () => {
   assert.equal(path.basename(cliPath), "cli.mjs");
   assert.equal(path.basename(path.dirname(cliPath)), "dist");
   assert.equal(path.basename(path.dirname(path.dirname(cliPath))), "tsx");
-});
-
-test("getBrokerScriptPath uses bundled broker when present next to the current module", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "codex-intercom-dist-"));
-
-  try {
-    const serverPath = path.join(dir, "codex-server.mjs");
-    const brokerPath = path.join(dir, "broker.mjs");
-    writeFileSync(serverPath, "");
-    writeFileSync(brokerPath, "");
-    assert.equal(getBrokerScriptPath(pathToFileURL(serverPath).href), brokerPath);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("getBrokerScriptPath falls back to source broker next to spawn.ts", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "codex-intercom-src-"));
-
-  try {
-    const spawnPath = path.join(dir, "spawn.ts");
-    writeFileSync(spawnPath, "");
-    assert.equal(getBrokerScriptPath(pathToFileURL(spawnPath).href), path.join(dir, "broker.ts"));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("getEffectiveBrokerCommand runs bundled broker with node when config is default", () => {
-  const effective = getEffectiveBrokerCommand("/repo/dist/broker.mjs", "npx", ["--no-install", "tsx"], "/usr/bin/node");
-  assert.deepEqual(effective, { command: "/usr/bin/node", args: [] });
 });
 
 test("getWindowsHiddenLauncherPath points at the broker launcher script", () => {
@@ -72,15 +42,6 @@ test("getWindowsBrokerCommandLine wraps node, resolved tsx cli, and broker path"
     commandLine,
     `"C:/Program Files/nodejs/node.exe" "${expectedTsxPath}" "C:/repo/broker.ts"`,
   );
-});
-
-test("getWindowsBrokerCommandLine runs bundled broker directly with node", () => {
-  const commandLine = getWindowsBrokerCommandLine(
-    "C:/repo/dist/broker.mjs",
-    "C:/repo",
-    "C:/Program Files/nodejs/node.exe",
-  );
-  assert.equal(commandLine, `"C:/Program Files/nodejs/node.exe" "C:/repo/dist/broker.mjs"`);
 });
 
 test("getWindowsHiddenLauncherScript runs the broker command without showing a console", () => {
@@ -126,21 +87,13 @@ test("getBrokerLaunchSpec uses custom broker command on Windows", () => {
   }
 });
 
-test("getBrokerLaunchSpec uses npx + tsx on non-Windows", () => {
+test("getBrokerLaunchSpec uses node + resolved tsx for the default non-Windows launch", () => {
   const spec = getBrokerLaunchSpec("C:/repo/broker.ts", "npx", ["--no-install", "tsx"], "C:/repo", "linux", "/tmp/intercom", "/usr/bin/node");
-  assert.equal(spec.command, "npx");
+  assert.equal(spec.command, "/usr/bin/node");
   assert.deepEqual(spec.args, [
-    "--no-install",
-    "tsx",
+    getTsxCliPath("C:/repo"),
     "C:/repo/broker.ts",
   ]);
-  assert.equal(spec.kind, "direct");
-});
-
-test("getBrokerLaunchSpec uses node for bundled broker on non-Windows with default config", () => {
-  const spec = getBrokerLaunchSpec("/repo/dist/broker.mjs", "npx", ["--no-install", "tsx"], "/repo", "linux", "/tmp/intercom", "/usr/bin/node");
-  assert.equal(spec.command, "/usr/bin/node");
-  assert.deepEqual(spec.args, ["/repo/dist/broker.mjs"]);
   assert.equal(spec.kind, "direct");
 });
 
@@ -165,4 +118,33 @@ test("getBrokerSpawnOptions keeps portable defaults on non-Windows platforms", (
   assert.equal(options.detached, true);
   assert.equal(options.stdio, "ignore");
   assert.equal(options.cwd, "/repo");
+});
+
+test("getBrokerSpawnOptions passes an absolute PI_CODING_AGENT_DIR to the broker", () => {
+  const options = getBrokerSpawnOptions("/repo", { PI_CODING_AGENT_DIR: "relative-agent" });
+  assert.equal(options.env.PI_CODING_AGENT_DIR, path.resolve("relative-agent"));
+});
+
+test("isBrokerHealthOkMessage requires the intercom protocol marker", () => {
+  assert.equal(isBrokerHealthOkMessage({ type: "health_ok", requestId: "req-1", protocol: "pi-intercom", version: 3 }, "req-1"), true);
+  assert.equal(isBrokerHealthOkMessage({ type: "health_ok", requestId: "req-1" }, "req-1"), false);
+  assert.equal(isBrokerHealthOkMessage({ type: "health_ok", requestId: "req-2", protocol: "pi-intercom", version: 3 }, "req-1"), false);
+  assert.equal(isBrokerHealthOkMessage("ok", "req-1"), false);
+});
+
+test("stopBrokerProcess terminates an incompatible broker PID", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pi-intercom-stop-broker-"));
+  const pidFile = path.join(root, "broker.pid");
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  try {
+    await once(child, "spawn");
+    writeFileSync(pidFile, String(child.pid));
+    const exited = once(child, "exit");
+    await stopBrokerProcess(pidFile, 2000);
+    await exited;
+    assert.notEqual(child.signalCode, null);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    rmSync(root, { recursive: true, force: true });
+  }
 });

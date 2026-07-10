@@ -1,6 +1,6 @@
 {
   "name": "claude-intercom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Claude Code MCP plugin and wakeable worker for direct local messaging with Pi, Codex, and Claude coding-agent sessions.",
   "license": "MIT",
   "type": "module",
@@ -20,9 +20,12 @@
     "skills/**/*",
     "types.ts",
     "config.ts",
+    "durable-json.ts",
+    "outbound-outbox.ts",
     ".claude-plugin/**/*",
     ".mcp.json",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -32,7 +35,8 @@
     "claude:worker": "tsx claude/worker-daemon.ts",
     "cci": "tsx claude/cci.ts",
     "ccim": "tsx claude/ccim.ts",
-    "test": "tsx --test broker/client.test.ts broker/framing.test.ts broker/paths.test.ts broker/spawn.test.ts claude/*.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test broker/client.test.ts broker/framing.test.ts broker/paths.test.ts broker/spawn.test.ts outbound-outbox.test.ts claude/*.test.ts"
   },
   "keywords": [
     "claude",
@@ -44,6 +48,7 @@
     "codex"
   ],
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.20.0",
     "typescript": "^6.0.3"

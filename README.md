@@ -1,5 +1,9 @@
 # Claude Intercom
 
+Version 0.2 uses the shared strict `pi-intercom` protocol v3. Any adapter may start the broker first; incompatible legacy brokers are detected and replaced. Sends are retained in a durable per-session outbox and replayed after reconnect, while receiver acknowledgement distinguishes broker acceptance from durable receipt.
+
+When running `cci` or `ccim` in an attached terminal, press **Alt+I** to copy that worker's intercom contact target. The MCP plugin cannot register a native Claude Code keyboard shortcut because Claude Code does not expose plugin keybinding registration; use `intercom_whoami` there. Headless worker-daemon mode likewise has no terminal shortcut.
+
 Claude Intercom adds local messaging between Claude Code, Codex, Pi, and other
 coding-agent sessions on the same machine. It speaks the same local broker
 protocol as [`pi-intercom`](https://github.com/dataforxyz/pi-intercom) and

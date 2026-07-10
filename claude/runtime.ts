@@ -142,8 +142,9 @@ export class ClaudeIntercomRuntime {
     if (!config.enabled) throw new Error("Intercom disabled");
     await spawnBrokerIfNeeded(config.brokerCommand, config.brokerArgs);
     const client = new IntercomClient();
-    client.on("message", (from: SessionInfo, message: Message) => {
+    client.on("message", (from: SessionInfo, message: Message, deliveryId: string) => {
       this.handleIncomingMessage(from, message);
+      client.acknowledgeMessage(deliveryId);
     });
     client.on("disconnected", (error: Error) => {
       for (const waiter of this.replyWaiters.values()) {
@@ -208,12 +209,12 @@ export class ClaudeIntercomRuntime {
       const onAbort = () => {
         this.replyWaiters.delete(replyTo);
         cleanup();
-        this.client?.cancelAsk(replyTo);
+        void this.client?.cancelAsk(replyTo);
         reject(new Error("intercom_ask cancelled"));
       };
       timeout = setTimeout(() => {
         this.replyWaiters.delete(replyTo);
-        this.client?.cancelAsk(replyTo);
+        void this.client?.deferAsk(replyTo);
         signal?.removeEventListener("abort", onAbort);
         reject(new Error(`No reply from "${from}" within ${Math.round(timeoutMs / 1000)} seconds`));
       }, timeoutMs);
@@ -302,14 +303,14 @@ export class ClaudeIntercomRuntime {
       if (!result.delivered) {
         this.replyWaiters.get(questionId)?.reject(new Error(result.reason ?? "Session may not exist or has disconnected."));
         this.replyWaiters.delete(questionId);
-        client.cancelAsk(questionId);
+        void client.cancelAsk(questionId);
         return textResult(`Message to "${to}" was not delivered: ${result.reason ?? "Session may not exist or has disconnected."}`, { ok: false, message_id: result.id, reason: result.reason }, true);
       }
       const reply = await replyPromise;
       const replyText = `${reply.content.text}${formatAttachments(reply.content.attachments)}`;
       return textResult(`Reply from ${to}:\n${replyText}`, { ok: true, message_id: result.id, reply });
     } catch (error) {
-      client.cancelAsk(questionId);
+      void client.cancelAsk(questionId);
       return textResult(error instanceof Error ? error.message : String(error), { ok: false }, true);
     }
   }

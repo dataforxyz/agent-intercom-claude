@@ -15,6 +15,7 @@ import { spawnBrokerIfNeeded } from "../broker/spawn.ts";
 import { loadConfig } from "../config.ts";
 import type { Message, SessionInfo } from "../types.ts";
 import { formatAttachments } from "./runtime.ts";
+import { copyTextToClipboard, formatContactInstruction } from "./contact.ts";
 
 const MAX_WAKES_PER_MINUTE = 20;
 
@@ -61,9 +62,17 @@ export class VirtualClaudeAgent {
     return this.agent.id;
   }
 
+  async copyContact(): Promise<string> {
+    const sessions = await this.client.listSessions();
+    const current = sessions.find((session) => session.id === this.client.sessionId);
+    const text = current ? formatContactInstruction(current, sessions) : `Intercom target: ${this.client.sessionId ?? this.agent.id}`;
+    return copyTextToClipboard(text) ? `Copied ${text.replace(/\n/g, "; ")}` : `Clipboard unavailable. ${text.replace(/\n/g, "; ")}`;
+  }
+
   async start(): Promise<void> {
-    this.client.on("message", (from: SessionInfo, message: Message) => {
+    this.client.on("message", (from: SessionInfo, message: Message, deliveryId: string) => {
       this.routeMessage(from, message);
+      this.client.acknowledgeMessage(deliveryId);
     });
     this.client.on("error", (error: Error) => {
       process.stderr.write(`worker ${this.agent.id}: ${error.message}\n`);
@@ -176,6 +185,11 @@ export class ClaudeWorkerDaemon {
 
   async stop(): Promise<void> {
     for (const agent of this.agents) await agent.stop().catch(() => undefined);
+  }
+
+  async copyPrimaryContact(): Promise<string> {
+    if (!this.agents[0]) throw new Error("No Claude intercom agent is running");
+    return this.agents[0].copyContact();
   }
 }
 

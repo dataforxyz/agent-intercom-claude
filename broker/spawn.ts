@@ -4,17 +4,22 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import net from "net";
+import { randomUUID } from "crypto";
+import { createMessageReader, writeMessage } from "./framing.ts";
 import {
   ensureIntercomRuntimeDir,
-  getBrokerSocketPath,
+  getAgentDirPath,
+  getBrokerConnectTarget,
   getIntercomDirPath,
+  INTERCOM_PROTOCOL_NAME,
+  INTERCOM_PROTOCOL_VERSION,
   INTERCOM_RUNTIME_FILE_MODE,
   restrictIntercomRuntimeFile,
+  type BrokerConnectTarget,
 } from "./paths.ts";
 
 const INTERCOM_DIR = getIntercomDirPath();
 const EXTENSION_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BROKER_SOCKET = getBrokerSocketPath();
 const BROKER_PID = join(INTERCOM_DIR, "broker.pid");
 const BROKER_SPAWN_LOCK = join(INTERCOM_DIR, "broker.spawn.lock");
 
@@ -66,27 +71,6 @@ function usesDefaultBrokerCommand(brokerCommand: string, brokerArgs: string[]): 
     && brokerArgs[1] === "tsx";
 }
 
-export function getBrokerScriptPath(moduleUrl: string = import.meta.url): string {
-  const currentDir = dirname(fileURLToPath(moduleUrl));
-  const bundledBrokerPath = join(currentDir, "broker.mjs");
-  if (existsSync(bundledBrokerPath)) {
-    return bundledBrokerPath;
-  }
-  return join(currentDir, "broker.ts");
-}
-
-export function getEffectiveBrokerCommand(
-  brokerPath: string,
-  brokerCommand: string,
-  brokerArgs: string[],
-  nodePath: string = process.execPath,
-): { command: string; args: string[] } {
-  if (brokerPath.endsWith(".mjs") && usesDefaultBrokerCommand(brokerCommand, brokerArgs)) {
-    return { command: nodePath, args: [] };
-  }
-  return { command: brokerCommand, args: brokerArgs };
-}
-
 export function getWindowsBrokerCommandLine(
   brokerPath: string,
   extensionDir: string = EXTENSION_DIR,
@@ -94,16 +78,11 @@ export function getWindowsBrokerCommandLine(
   brokerCommand = "npx",
   brokerArgs: string[] = ["--no-install", "tsx"],
 ): string {
-  const effective = getEffectiveBrokerCommand(brokerPath, brokerCommand, brokerArgs, nodePath);
-  if (effective.command === nodePath && effective.args.length === 0) {
-    return [quoteWindowsArg(nodePath), quoteWindowsArg(brokerPath)].join(" ");
-  }
-
-  if (usesDefaultBrokerCommand(effective.command, effective.args)) {
+  if (usesDefaultBrokerCommand(brokerCommand, brokerArgs)) {
     return [quoteWindowsArg(nodePath), quoteWindowsArg(getTsxCliPath(extensionDir)), quoteWindowsArg(brokerPath)].join(" ");
   }
 
-  return [quoteWindowsArg(effective.command), ...effective.args.map(quoteWindowsArg), quoteWindowsArg(brokerPath)].join(" ");
+  return [quoteWindowsArg(brokerCommand), ...brokerArgs.map(quoteWindowsArg), quoteWindowsArg(brokerPath)].join(" ");
 }
 
 export function getWindowsHiddenLauncherScript(commandLine: string): string {
@@ -113,6 +92,17 @@ export function getWindowsHiddenLauncherScript(commandLine: string): string {
     'Set WshShell = Nothing',
     '',
   ].join("\r\n");
+}
+
+export function isBrokerHealthOkMessage(message: unknown, requestId: string): boolean {
+  if (typeof message !== "object" || message === null || !("type" in message)) {
+    return false;
+  }
+  const response = message as Record<string, unknown>;
+  return response.type === "health_ok"
+    && response.requestId === requestId
+    && response.protocol === INTERCOM_PROTOCOL_NAME
+    && response.version === INTERCOM_PROTOCOL_VERSION;
 }
 
 function writeWindowsHiddenLauncher(
@@ -137,7 +127,6 @@ export function getBrokerLaunchSpec(
   intercomDir: string = INTERCOM_DIR,
   nodePath: string = process.execPath,
 ): BrokerLaunchSpec {
-  const effective = getEffectiveBrokerCommand(brokerPath, brokerCommand, brokerArgs, nodePath);
   if (platform === "win32") {
     const launcherPath = getWindowsHiddenLauncherPath(intercomDir);
     return {
@@ -145,18 +134,29 @@ export function getBrokerLaunchSpec(
       command: "wscript.exe",
       args: [launcherPath],
       launcherPath,
-      launcherCommandLine: getWindowsBrokerCommandLine(brokerPath, extensionDir, nodePath, effective.command, effective.args),
+      launcherCommandLine: getWindowsBrokerCommandLine(brokerPath, extensionDir, nodePath, brokerCommand, brokerArgs),
+    };
+  }
+
+  if (usesDefaultBrokerCommand(brokerCommand, brokerArgs)) {
+    return {
+      kind: "direct",
+      command: nodePath,
+      args: [getTsxCliPath(extensionDir), brokerPath],
     };
   }
 
   return {
     kind: "direct",
-    command: effective.command,
-    args: [...effective.args, brokerPath],
+    command: brokerCommand,
+    args: [...brokerArgs, brokerPath],
   };
 }
 
-export function getBrokerSpawnOptions(extensionDir: string = EXTENSION_DIR): {
+export function getBrokerSpawnOptions(
+  extensionDir: string = EXTENSION_DIR,
+  env: NodeJS.ProcessEnv = process.env,
+): {
   detached: true;
   stdio: "ignore";
   cwd: string;
@@ -167,7 +167,7 @@ export function getBrokerSpawnOptions(extensionDir: string = EXTENSION_DIR): {
     detached: true,
     stdio: "ignore",
     cwd: extensionDir,
-    env: { ...process.env, NODE_NO_WARNINGS: "1" },
+    env: { ...env, PI_CODING_AGENT_DIR: getAgentDirPath(env), NODE_NO_WARNINGS: "1" },
     windowsHide: true,
   };
 }
@@ -193,8 +193,11 @@ export async function spawnBrokerIfNeeded(brokerCommand: string, brokerArgs: str
     if (await isBrokerRunning()) {
       return;
     }
+    if (await checkBrokerHealth() === "incompatible") {
+      await stopBrokerProcess();
+    }
 
-    const brokerPath = getBrokerScriptPath();
+    const brokerPath = join(dirname(fileURLToPath(import.meta.url)), "broker.ts");
     const launch = getBrokerLaunchSpec(brokerPath, brokerCommand, brokerArgs);
     if (launch.kind === "windows-launcher") {
       writeWindowsHiddenLauncher(launch.launcherCommandLine, launch.launcherPath);
@@ -240,6 +243,32 @@ export async function spawnBrokerIfNeeded(brokerCommand: string, brokerArgs: str
   }
 }
 
+export async function stopBrokerProcess(pidFile = BROKER_PID, timeoutMs = 3000): Promise<void> {
+  if (!existsSync(pidFile)) return;
+  let pid: number;
+  try {
+    pid = Number.parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
+  } catch {
+    return;
+  }
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      process.kill(pid, 0);
+      await sleep(50);
+    } catch {
+      return;
+    }
+  }
+  throw new Error(`Incompatible intercom broker ${pid} did not stop within ${timeoutMs}ms`);
+}
+
 async function isBrokerRunning(): Promise<boolean> {
   if (await checkSocketConnectable()) {
     return true;
@@ -258,29 +287,78 @@ async function isBrokerRunning(): Promise<boolean> {
   }
 }
 
-function checkSocketConnectable(): Promise<boolean> {
+function connectToBrokerTarget(target: BrokerConnectTarget): net.Socket {
+  return typeof target === "string"
+    ? net.connect(target)
+    : net.connect({ host: target.host, port: target.port });
+}
+
+type BrokerHealth = "compatible" | "incompatible" | "unreachable";
+
+async function checkSocketConnectable(): Promise<boolean> {
+  return await checkBrokerHealth() === "compatible";
+}
+
+function checkBrokerHealth(): Promise<BrokerHealth> {
   return new Promise((resolve) => {
-    const socket = net.connect(BROKER_SOCKET);
-    const finish = (isConnected: boolean) => {
+    let target: BrokerConnectTarget;
+    try {
+      target = getBrokerConnectTarget();
+    } catch {
+      resolve("unreachable");
+      return;
+    }
+
+    const socket = connectToBrokerTarget(target);
+    const requestId = randomUUID();
+    const expectedStateId = typeof target === "string" ? undefined : target.stateId;
+    let settled = false;
+    const finish = (health: BrokerHealth) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timeout);
       socket.off("connect", onConnect);
       socket.off("error", onError);
-      resolve(isConnected);
+      socket.off("data", reader);
+      socket.destroy();
+      resolve(health);
     };
     const onConnect = () => {
-      socket.end();
-      finish(true);
+      try {
+        writeMessage(socket, {
+          type: "health",
+          requestId,
+          ...(expectedStateId ? { stateId: expectedStateId } : {}),
+        });
+      } catch {
+        finish("unreachable");
+      }
     };
-    const onError = () => {
-      socket.destroy();
-      finish(false);
-    };
+    const onError = () => finish("unreachable");
+    const reader = createMessageReader((message) => {
+      if (isBrokerHealthOkMessage(message, requestId)) {
+        finish("compatible");
+        return;
+      }
+      if (
+        typeof message === "object"
+        && message !== null
+        && "type" in message
+        && message.type === "health_ok"
+        && "requestId" in message
+        && message.requestId === requestId
+      ) {
+        finish("incompatible");
+        return;
+      }
+      finish("unreachable");
+    }, () => finish("unreachable"));
     socket.on("connect", onConnect);
     socket.on("error", onError);
-    const timeout = setTimeout(() => {
-      socket.destroy();
-      finish(false);
-    }, 1000);
+    socket.on("data", reader);
+    const timeout = setTimeout(() => finish("unreachable"), 1000);
   });
 }
 

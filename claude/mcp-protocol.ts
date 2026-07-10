@@ -1,5 +1,6 @@
 import type { ClaudeIntercomRuntime, ToolResult } from "./runtime.ts";
 import { validateAskTimeoutMs } from "../config.ts";
+import type { Attachment } from "../types.ts";
 
 interface JsonRpcRequest {
   jsonrpc?: string;
@@ -36,7 +37,7 @@ function asOptionalPositiveInteger(value: unknown, name: string): number | undef
   return validateAskTimeoutMs(value, name);
 }
 
-function asAttachmentArray(value: unknown) {
+function asAttachmentArray(value: unknown): Attachment[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new Error("attachments must be an array");
   return value.map((item, index) => {
@@ -224,14 +225,14 @@ export async function handleMcpRequest(request: JsonRpcRequest, runtime: ClaudeI
       const abortController = typeof requestId === "string" || typeof requestId === "number"
         ? new AbortController()
         : null;
-      if (abortController && requestId !== undefined) inflightToolCalls.set(requestId, abortController);
+      if (abortController && requestId !== undefined && requestId !== null) inflightToolCalls.set(requestId, abortController);
       try {
         return ok(request.id, await tool.handler((args ?? {}) as Record<string, unknown>, abortController?.signal));
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : String(caught);
         return ok(request.id, { content: [{ type: "text", text: message }], isError: true });
       } finally {
-        if (abortController && requestId !== undefined) inflightToolCalls.delete(requestId);
+        if (abortController && requestId !== undefined && requestId !== null) inflightToolCalls.delete(requestId);
       }
     }
     default:

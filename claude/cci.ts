@@ -211,7 +211,28 @@ export async function runCci(options: CciOptions): Promise<number> {
   });
 
   await daemon.start();
+  let restoreInput: (() => void) | undefined;
+  if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const onData = (chunk: Buffer) => {
+      const input = chunk.toString("utf8");
+      if (input === "\u001bi" || input === "\u001bI") {
+        void daemon.copyPrimaryContact().then((status) => process.stderr.write(`${status}\n`));
+      } else if (input === "\u0003") {
+        process.emit("SIGINT");
+      }
+    };
+    process.stdin.on("data", onData);
+    restoreInput = () => {
+      process.stdin.off("data", onData);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+    };
+    process.stderr.write("Press Alt+I to copy this worker's intercom contact target.\n");
+  }
   await Promise.race([once(process, "SIGINT"), once(process, "SIGTERM")]);
+  restoreInput?.();
   await cleanupOnce();
   return 0;
 }
