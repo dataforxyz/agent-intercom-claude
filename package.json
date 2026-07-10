@@ -18,6 +18,7 @@
     "broker/**/*.ts",
     "scripts/**/*",
     "skills/**/*",
+    "commands/**/*",
     "types.ts",
     "config.ts",
     "durable-json.ts",

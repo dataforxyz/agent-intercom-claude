@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { createDefaultIdentity, parseCciArgs, sanitizeSegment } from "./cci.ts";
+import { createDefaultIdentity, parseCciArgs, resolveIntercomSelection, sanitizeSegment } from "./cci.ts";
 
 test("sanitizeSegment keeps readable safe ids", () => {
   assert.equal(sanitizeSegment("Claude:Repo Main#123"), "claude:repo-main-123");
   assert.equal(sanitizeSegment(""), "claude");
+});
+
+test("resolveIntercomSelection accepts only an in-range numbered choice", () => {
+  assert.equal(resolveIntercomSelection(" 2 ", 3), 1);
+  assert.equal(resolveIntercomSelection("0", 3), null);
+  assert.equal(resolveIntercomSelection("4", 3), null);
+  assert.equal(resolveIntercomSelection("worker", 3), null);
 });
 
 test("createDefaultIdentity derives readable per-process defaults", () => {

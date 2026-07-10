@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
   getBrokerLaunchSpec,
+  getBrokerEntryPath,
   getBrokerSpawnOptions,
   getTsxCliPath,
   getWindowsHiddenLauncherScript,
@@ -15,6 +16,27 @@ import {
   isBrokerHealthOkMessage,
   stopBrokerProcess,
 } from "./spawn.ts";
+
+test("getBrokerEntryPath prefers the packaged broker bundle", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "claude-intercom-dist-"));
+  try {
+    const modulePath = path.join(root, "cci.mjs");
+    writeFileSync(path.join(root, "broker.mjs"), "");
+    assert.equal(getBrokerEntryPath(new URL(`file://${modulePath}`).href), path.join(root, "broker.mjs"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("getBrokerEntryPath falls back to the TypeScript source broker", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "claude-intercom-src-"));
+  try {
+    const modulePath = path.join(root, "spawn.ts");
+    assert.equal(getBrokerEntryPath(new URL(`file://${modulePath}`).href), path.join(root, "broker.ts"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("getTsxCliPath resolves tsx cli via module resolution", () => {
   const cliPath = getTsxCliPath("C:/repo");

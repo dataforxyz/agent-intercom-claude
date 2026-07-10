@@ -2,7 +2,7 @@
 
 Version 0.2 uses the shared strict `pi-intercom` protocol v3. Any adapter may start the broker first; incompatible legacy brokers are detected and replaced. Sends are retained in a durable per-session outbox and replayed after reconnect, while receiver acknowledgement distinguishes broker acceptance from durable receipt.
 
-When running `cci` or `ccim` in an attached terminal, press **Alt+I** to copy that worker's intercom contact target. The MCP plugin cannot register a native Claude Code keyboard shortcut because Claude Code does not expose plugin keybinding registration; use `intercom_whoami` there. Headless worker-daemon mode likewise has no terminal shortcut.
+When running `cci` or `ccim` in an attached terminal, press **Alt+M** to choose a connected session and send it a message, or **Alt+I** to copy that worker's intercom contact target. The MCP plugin cannot register native Claude Code keyboard shortcuts because Claude Code does not expose plugin keybinding registration; the plugin instead provides `/claude-intercom:intercom` and `/claude-intercom:intercom-id`. Detached worker-daemon mode has no terminal shortcuts.
 
 Claude Intercom adds local messaging between Claude Code, Codex, Pi, and other
 coding-agent sessions on the same machine. It speaks the same local broker
@@ -79,8 +79,9 @@ This provides:
 
 `cci` and `ccim` are the recommended entry points when you want an attached,
 wakeable Claude session. Unlike a plain MCP session or a detached headless
-worker, the attached wrappers can install the **Alt+I** contact-copy shortcut;
-they also keep an intercom identity online so another agent can wake the worker.
+worker, the attached wrappers provide the **Alt+M** session picker/message
+composer and the **Alt+I** contact-copy shortcut; they also keep an intercom
+identity online so another agent can wake the worker.
 If you use the same worker profiles repeatedly, add memorable shell aliases
 with your own portable project paths and stable IDs:
 
@@ -117,10 +118,23 @@ The repo also ships Claude Code plugin metadata:
 - `.claude-plugin/plugin.json`
 - `.mcp.json`
 - `skills/claude-intercom/SKILL.md`
+- `commands/intercom.md` and `commands/intercom-id.md`
 
 The plugin packages the MCP server and the bundled `claude-intercom` skill (which
-gives Claude copy-paste coordination patterns). Load it for a single session
-with `--plugin-dir`:
+gives Claude copy-paste coordination patterns). It also installs these Claude
+Code slash commands:
+
+- `/claude-intercom:intercom [target and message]` — list sessions and send a
+  message. Without arguments, Claude asks which peer to contact and what to send.
+- `/claude-intercom:intercom-id` — print this session's stable, copyable
+  intercom target.
+
+Claude custom commands are model-driven prompt commands, not native modal UI.
+Claude namespaces plugin commands by plugin name, so an installed plugin cannot
+claim the unqualified `/intercom` command globally.
+They call the same MCP tools and work in a normal Claude Code session, but only
+the attached `cci`/`ccim` wrappers can own the terminal and provide an immediate
+Alt+M picker. Load the plugin for a single session with `--plugin-dir`:
 
 ```bash
 claude --plugin-dir /path/to/claude-intercom      # this session only
@@ -160,8 +174,11 @@ For longer work, use `intercom_send` and check later with `intercom_pending`.
 
 `cci` (Claude Code Intercom) starts a single wakeable worker in the foreground.
 It registers the worker on the broker, then logs wake activity as messages
-arrive. There is no shared live TUI — inspect the worker's conversation any time
-with `claude --resume <session-id>` (the ID is printed on each turn).
+arrive. Press **Alt+M** for a numbered list of connected peers, then choose one
+and enter a message. Press **Alt+I** to copy the worker's contact target. This is
+a lightweight terminal composer rather than a shared live Claude TUI; inspect
+the worker's conversation any time with `claude --resume <session-id>` (the ID
+is printed on each turn). `ccim` provides the same shortcuts.
 
 Start a named worker:
 

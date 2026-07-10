@@ -41,6 +41,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+export function getBrokerEntryPath(moduleUrl: string = import.meta.url): string {
+  const moduleDir = dirname(fileURLToPath(moduleUrl));
+  const bundledBroker = join(moduleDir, "broker.mjs");
+  return existsSync(bundledBroker) ? bundledBroker : join(moduleDir, "broker.ts");
+}
+
 export function getTsxCliPath(extensionDir: string = EXTENSION_DIR): string {
   // Resolve tsx via Node's module resolution so it works regardless of whether
   // tsx is bundled under extensionDir/node_modules or hoisted to a workspace
@@ -197,7 +203,7 @@ export async function spawnBrokerIfNeeded(brokerCommand: string, brokerArgs: str
       await stopBrokerProcess();
     }
 
-    const brokerPath = join(dirname(fileURLToPath(import.meta.url)), "broker.ts");
+    const brokerPath = getBrokerEntryPath();
     const launch = getBrokerLaunchSpec(brokerPath, brokerCommand, brokerArgs);
     if (launch.kind === "windows-launcher") {
       writeWindowsHiddenLauncher(launch.launcherCommandLine, launch.launcherPath);

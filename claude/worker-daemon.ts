@@ -69,6 +69,30 @@ export class VirtualClaudeAgent {
     return copyTextToClipboard(text) ? `Copied ${text.replace(/\n/g, "; ")}` : `Clipboard unavailable. ${text.replace(/\n/g, "; ")}`;
   }
 
+  async listPeers(): Promise<SessionInfo[]> {
+    const sessions = await this.client.listSessions();
+    return sessions.filter((session) => session.id !== this.client.sessionId);
+  }
+
+  async sendMessage(to: string, text: string): Promise<string> {
+    const sessions = await this.client.listSessions();
+    const normalized = to.toLowerCase();
+    const matches = sessions.filter((session) =>
+      session.id === to
+      || session.id.startsWith(to)
+      || session.name?.toLowerCase() === normalized
+    );
+    if (matches.length > 1) {
+      throw new Error(`Multiple intercom sessions match "${to}"; choose a full ID.`);
+    }
+    const target = matches[0]?.id ?? to;
+    const result = await this.client.send(target, { text });
+    if (!result.delivered) {
+      throw new Error(result.reason ?? `Intercom session "${to}" is unavailable.`);
+    }
+    return `Message sent to ${matches[0]?.name || to}.`;
+  }
+
   async start(): Promise<void> {
     this.client.on("message", (from: SessionInfo, message: Message, deliveryId: string) => {
       this.routeMessage(from, message);
@@ -190,6 +214,16 @@ export class ClaudeWorkerDaemon {
   async copyPrimaryContact(): Promise<string> {
     if (!this.agents[0]) throw new Error("No Claude intercom agent is running");
     return this.agents[0].copyContact();
+  }
+
+  async listPrimaryPeers(): Promise<SessionInfo[]> {
+    if (!this.agents[0]) throw new Error("No Claude intercom agent is running");
+    return this.agents[0].listPeers();
+  }
+
+  async sendFromPrimary(to: string, text: string): Promise<string> {
+    if (!this.agents[0]) throw new Error("No Claude intercom agent is running");
+    return this.agents[0].sendMessage(to, text);
   }
 }
 

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { ClaudeWorkerDaemon } from "./worker-daemon.ts";
 import { DEFAULT_WORKER_STATE_PATH, type WorkerAgentConfig, type WorkerConfig } from "./worker-config.ts";
 
@@ -153,6 +154,50 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
   };
 }
 
+export function resolveIntercomSelection(selection: string, sessionCount: number): number | null {
+  const trimmed = selection.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const index = Number(trimmed) - 1;
+  return index >= 0 && index < sessionCount ? index : null;
+}
+
+async function openIntercomComposer(daemon: ClaudeWorkerDaemon): Promise<void> {
+  const sessions = await daemon.listPrimaryPeers();
+  if (!sessions.length) {
+    process.stderr.write("No other intercom sessions are connected.\n");
+    return;
+  }
+
+  process.stderr.write("\nIntercom sessions:\n");
+  sessions.forEach((session, index) => {
+    const status = session.status ? `, ${session.status}` : "";
+    process.stderr.write(`  ${index + 1}. ${session.name || "unnamed"} (${session.id.slice(0, 8)}) — ${session.cwd} [${session.model}${status}]\n`);
+  });
+
+  const terminal = createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+  try {
+    const selection = await terminal.question("Send to (number, blank to cancel): ");
+    if (!selection.trim()) {
+      process.stderr.write("Intercom message cancelled.\n");
+      return;
+    }
+    const selectedIndex = resolveIntercomSelection(selection, sessions.length);
+    if (selectedIndex === null) {
+      process.stderr.write("Invalid intercom session selection.\n");
+      return;
+    }
+    const message = await terminal.question("Message (blank to cancel): ");
+    if (!message.trim()) {
+      process.stderr.write("Intercom message cancelled.\n");
+      return;
+    }
+    const status = await daemon.sendFromPrimary(sessions[selectedIndex].id, message);
+    process.stderr.write(`${status}\n`);
+  } finally {
+    terminal.close();
+  }
+}
+
 export async function runCci(options: CciOptions): Promise<number> {
   const identity = detectIdentity(options.cwd);
   const id = sanitizeSegment(options.id ?? identity.id);
@@ -215,10 +260,22 @@ export async function runCci(options: CciOptions): Promise<number> {
   if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
     process.stdin.setRawMode(true);
     process.stdin.resume();
+    let composerOpen = false;
     const onData = (chunk: Buffer) => {
       const input = chunk.toString("utf8");
       if (input === "\u001bi" || input === "\u001bI") {
         void daemon.copyPrimaryContact().then((status) => process.stderr.write(`${status}\n`));
+      } else if ((input === "\u001bm" || input === "\u001bM") && !composerOpen) {
+        composerOpen = true;
+        process.stdin.off("data", onData);
+        process.stdin.setRawMode(false);
+        void openIntercomComposer(daemon)
+          .catch((error) => process.stderr.write(`Intercom: ${error instanceof Error ? error.message : String(error)}\n`))
+          .finally(() => {
+            composerOpen = false;
+            process.stdin.setRawMode(true);
+            process.stdin.on("data", onData);
+          });
       } else if (input === "\u0003") {
         process.emit("SIGINT");
       }
@@ -229,7 +286,7 @@ export async function runCci(options: CciOptions): Promise<number> {
       process.stdin.setRawMode(false);
       process.stdin.pause();
     };
-    process.stderr.write("Press Alt+I to copy this worker's intercom contact target.\n");
+    process.stderr.write("Press Alt+M to send an intercom message or Alt+I to copy this worker's contact target.\n");
   }
   await Promise.race([once(process, "SIGINT"), once(process, "SIGTERM")]);
   restoreInput?.();
