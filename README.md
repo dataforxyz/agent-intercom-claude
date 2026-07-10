@@ -77,6 +77,23 @@ This provides:
 - `cci` — start a normal wakeable worker
 - `ccim` — start a minimal wakeable worker (`cci --minimal`)
 
+`cci` and `ccim` are the recommended entry points when you want an attached,
+wakeable Claude session. Unlike a plain MCP session or a detached headless
+worker, the attached wrappers can install the **Alt+I** contact-copy shortcut;
+they also keep an intercom identity online so another agent can wake the worker.
+If you use the same worker profiles repeatedly, add memorable shell aliases
+with your own portable project paths and stable IDs:
+
+```bash
+alias claude-reviewer='cci --cwd "$HOME/src/my-project" --name reviewer --id reviewer'
+alias claude-reviewer-min='ccim --cwd "$HOME/src/my-project" --name reviewer-min --id reviewer-min'
+```
+
+Put aliases in your shell startup file (for example `~/.bashrc` or `~/.zshrc`).
+They are optional convenience shortcuts: the installed `cci` and `ccim`
+commands work directly, but aliases make stable identities and project-specific
+defaults easier to reuse without copying a long command.
+
 Then add the MCP server to Claude Code:
 
 ```bash
@@ -203,7 +220,8 @@ shell command and reports back.
 
 `cci` and `ccim` are installed as a matched pair (like Codex's `coi` and `coim`):
 `ccim` is exactly `cci --minimal` — same flags, same identity handling, minimal
-by default. No shell alias needed.
+by default. You do not need an alias to enable minimal mode; aliases are useful
+only for reusable names, IDs, paths, or permission settings.
 
 ```bash
 cci  --name reviewer --id reviewer                 # normal: full config, CLAUDE.md, skills, MCP
@@ -251,13 +269,13 @@ Create a config:
 
 ```json
 {
-  "statePath": "/home/you/.pi/agent/intercom/claude-worker-state.json",
+  "statePath": "/path/to/intercom/claude-worker-state.json",
   "claudeCommand": "claude",
   "agents": [
     {
       "id": "claude-worker",
       "name": "claude-worker",
-      "cwd": "/home/you/src/project",
+      "cwd": "/path/to/project",
       "model": "sonnet",
       "instructions": "Reply concisely. Ask before making destructive changes.",
       "permissionMode": "bypassPermissions"
@@ -269,7 +287,7 @@ Create a config:
 Start it:
 
 ```bash
-claude-intercom-worker --config /home/you/.pi/agent/intercom/claude-worker.json
+claude-intercom-worker --config "$HOME/.pi/agent/intercom/claude-worker.json"
 ```
 
 Each worker's `session_id` is persisted in `statePath`, so later messages resume
