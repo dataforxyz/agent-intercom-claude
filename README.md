@@ -1,15 +1,24 @@
 # Claude Intercom
 
-Version 0.2 uses the shared strict `pi-intercom` protocol v3. Any adapter may start the broker first; incompatible legacy brokers are detected and replaced. Sends are retained in a durable per-session outbox and replayed after reconnect, while receiver acknowledgement distinguishes broker acceptance from durable receipt.
+**Agent Intercom** is a cross-harness, same-machine messaging system for coding agents. Its Pi, Codex, Claude Code, and OpenCode adapters share one local broker and protocol, so sessions can discover and message each other regardless of which harness they run in.
+
+| Harness | Repository |
+|---|---|
+| Pi | [`agent-intercom-pi`](https://github.com/dataforxyz/agent-intercom-pi) |
+| Codex | [`agent-intercom-codex`](https://github.com/dataforxyz/agent-intercom-codex) |
+| Claude Code | [`agent-intercom-claude`](https://github.com/dataforxyz/agent-intercom-claude) |
+| OpenCode | [`agent-intercom-opencode`](https://github.com/dataforxyz/agent-intercom-opencode) |
+
+This repository contains the Claude Code adapter. Version 0.2 uses the shared strict `pi-intercom` protocol v3. Any adapter may start the broker first; incompatible legacy brokers are detected and replaced. Sends are retained in a durable per-session outbox and replayed after reconnect, while receiver acknowledgement distinguishes broker acceptance from durable receipt.
 
 When running `cci` or `ccim` in an attached terminal, press **Alt+M** to choose a connected session and send it a message, or **Alt+I** to copy that worker's intercom contact target. The MCP plugin cannot register native Claude Code keyboard shortcuts because Claude Code does not expose plugin keybinding registration; the plugin instead provides `/claude-intercom:intercom` and `/claude-intercom:intercom-id`. Detached worker-daemon mode has no terminal shortcuts.
 
-Claude Intercom adds local messaging between Claude Code, Codex, Pi, and other
-coding-agent sessions on the same machine. It speaks the same local broker
-protocol as [`pi-intercom`](https://github.com/dataforxyz/pi-intercom) and
-[`codex-intercom`](https://github.com/dataforxyz/codex-intercom), so sessions
+Claude Intercom adds local messaging between Claude Code, Codex, Pi, OpenCode,
+and other coding-agent sessions on the same machine. It speaks the same local broker
+protocol as [`pi-intercom`](https://github.com/dataforxyz/agent-intercom-pi) and
+[`codex-intercom`](https://github.com/dataforxyz/agent-intercom-codex), so sessions
 can discover each other, send updates, ask blocking questions, read pending
-messages, and reply to asks — across all three agents.
+messages, and reply to asks across all four supported harnesses.
 
 The project has two related pieces:
 
@@ -67,7 +76,7 @@ at any time with `claude --resume <session-id>`.
 Install the package so the command-line entry points are on `PATH`:
 
 ```bash
-npm install -g github:dataforxyz/claude-intercom
+npm install -g github:dataforxyz/agent-intercom-claude
 ```
 
 This provides:
@@ -367,14 +376,14 @@ environment when no config file is given (`CLAUDE_INTERCOM_WORKER_ID`, `…_NAME
 | `PI_INTERCOM_ASK_TIMEOUT_MS` | all | Default blocking-ask timeout (≤ 120000) |
 | `PI_CODING_AGENT_DIR` | all | Overrides the `~/.pi/agent` base dir (broker socket + config live under it) |
 
-The `PI_*` names are shared with `pi-intercom` and `codex-intercom` on purpose —
-all three read the same broker location and ask-timeout so they interoperate.
+The `PI_*` names are shared with the Pi, Codex, and OpenCode adapters on purpose —
+all four read the same broker location and ask-timeout so they interoperate.
 
 ## Development
 
 ```bash
-git clone https://github.com/dataforxyz/claude-intercom.git
-cd claude-intercom
+git clone https://github.com/dataforxyz/agent-intercom-claude.git
+cd agent-intercom-claude
 npm install
 npm run build
 npm test
@@ -386,12 +395,13 @@ For MCP development, register the TypeScript source directly:
 claude mcp add claude-intercom-dev -- npx --no-install tsx ./claude/server.ts
 ```
 
-## Relationship To Pi / Codex Intercom
+## Agent Intercom Compatibility
 
-`pi-intercom` is the Pi-native extension with overlays and inline rendering.
-`codex-intercom` is the Codex MCP/plugin adapter plus wake-on-message Codex
-app-server sidecars. `claude-intercom` is the Claude Code MCP/plugin adapter
-plus wake-on-message headless `claude -p` workers.
+`agent-intercom-pi` is the Pi-native adapter with overlays and inline rendering.
+`agent-intercom-codex` is the Codex MCP/plugin adapter plus wake-on-message Codex
+app-server sidecars. This repository, `agent-intercom-claude`, is the Claude Code
+MCP/plugin adapter plus wake-on-message headless `claude -p` workers.
+`agent-intercom-opencode` provides the native OpenCode plugin.
 
-All three vendor the same minimal local broker/client protocol and share one
-broker socket, so a single session list spans Pi, Codex, and Claude.
+All four vendor the compatible local broker/client protocol and share one broker
+socket, so a single session list spans Pi, Codex, Claude Code, and OpenCode.
