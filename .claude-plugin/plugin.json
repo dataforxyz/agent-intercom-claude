@@ -7,8 +7,8 @@
     "email": "support@datafor.xyz",
     "url": "https://github.com/dataforxyz"
   },
-  "homepage": "https://github.com/dataforxyz/claude-intercom",
-  "repository": "https://github.com/dataforxyz/claude-intercom",
+  "homepage": "https://github.com/dataforxyz/agent-intercom-claude",
+  "repository": "https://github.com/dataforxyz/agent-intercom-claude",
   "license": "MIT",
   "keywords": [
     "intercom",

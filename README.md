@@ -150,7 +150,7 @@ the attached `cci`/`ccim` wrappers can own the terminal and provide an immediate
 Alt+M picker. Load the plugin for a single session with `--plugin-dir`:
 
 ```bash
-claude --plugin-dir /path/to/claude-intercom      # this session only
+claude --plugin-dir /path/to/agent-intercom-claude      # this session only
 ```
 
 For the minimal tool surface, prefer plain MCP registration
