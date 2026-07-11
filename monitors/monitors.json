@@ -1,0 +1,8 @@
+[
+  {
+    "name": "intercom-inbox",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/inbox-monitor.mjs\"",
+    "description": "Inbound intercom messages addressed to this session",
+    "when": "always"
+  }
+]

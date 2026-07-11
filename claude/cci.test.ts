@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { createDefaultIdentity, parseCciArgs, resolveIntercomSelection, sanitizeSegment } from "./cci.ts";
+import { buildTuiAppendSystemPrompt, createDefaultIdentity, parseCciArgs, resolveIntercomSelection, sanitizeSegment } from "./cci.ts";
 
 test("sanitizeSegment keeps readable safe ids", () => {
   assert.equal(sanitizeSegment("Claude:Repo Main#123"), "claude:repo-main-123");
@@ -40,6 +40,20 @@ test("parseCciArgs reads name, id, cwd, instructions, and model", () => {
   assert.equal(parsed.cwd, "/tmp/project");
   assert.equal(parsed.instructions, "Stay terse.");
   assert.equal(parsed.model, "opus");
+});
+
+test("parseCciArgs tui defaults to false and is enabled by --tui/--live", () => {
+  assert.equal(parseCciArgs([], {}).tui, false);
+  assert.equal(parseCciArgs(["--tui"], {}).tui, true);
+  assert.equal(parseCciArgs(["--live"], {}).tui, true);
+});
+
+test("buildTuiAppendSystemPrompt names the identity and the reply protocol", () => {
+  const prompt = buildTuiAppendSystemPrompt("reviewer", "claude-reviewer-1");
+  assert.match(prompt, /reviewer/);
+  assert.match(prompt, /claude-reviewer-1/);
+  assert.match(prompt, /intercom_reply/);
+  assert.match(prompt, /awaiting your reply/);
 });
 
 test("parseCciArgs defaults to dangerouslySkipPermissions=true when neither --yolo nor --safe is given", () => {

@@ -5,6 +5,7 @@ import { cwd as processCwd } from "process";
 import { IntercomClient } from "../broker/client.ts";
 import { spawnBrokerIfNeeded } from "../broker/spawn.ts";
 import { getAskTimeoutMs, loadConfig } from "../config.ts";
+import { appendInboxMessage } from "./inbox.ts";
 import type { Attachment, Message, SessionInfo } from "../types.ts";
 
 export interface ClaudeRuntimeIdentity {
@@ -192,6 +193,18 @@ export class ClaudeIntercomRuntime {
     this.unread.push(entry);
     if (message.expectsReply) {
       this.unresolvedAsks.set(message.id, entry);
+    }
+
+    // TUI mode: mirror the message to the session inbox so the plugin monitor
+    // can inject it into the live interactive session. Never let inbox I/O
+    // break normal message handling.
+    const inboxPath = process.env.CLAUDE_INTERCOM_INBOX;
+    if (inboxPath) {
+      try {
+        appendInboxMessage(inboxPath, from, message);
+      } catch {
+        // Best-effort delivery mirror only.
+      }
     }
   }
 

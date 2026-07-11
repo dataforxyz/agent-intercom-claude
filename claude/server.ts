@@ -5,6 +5,15 @@ import { handleMcpRequest } from "./mcp-protocol.ts";
 
 const runtime = new ClaudeIntercomRuntime();
 
+// TUI/live mode (`cci --tui` sets CLAUDE_INTERCOM_INBOX): register on the broker
+// immediately so peers can reach this session and inbound messages flow into the
+// inbox before the first tool call. Otherwise registration is lazy (first tool).
+if (process.env.CLAUDE_INTERCOM_INBOX) {
+  void runtime.connect().catch((error) => {
+    process.stderr.write(`claude-intercom: eager connect failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  });
+}
+
 const rl = readline.createInterface({
   input: stdin,
   crlfDelay: Infinity,

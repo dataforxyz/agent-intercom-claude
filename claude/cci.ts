@@ -1,10 +1,12 @@
 import { once } from "node:events";
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, realpathSync, rmSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { ClaudeWorkerDaemon } from "./worker-daemon.ts";
+import { defaultInboxPath } from "./inbox.ts";
 import { DEFAULT_WORKER_STATE_PATH, type WorkerAgentConfig, type WorkerConfig } from "./worker-config.ts";
 
 export interface CciOptions {
@@ -19,6 +21,7 @@ export interface CciOptions {
   addDirs: string[];
   mcpConfig?: string;
   minimal: boolean;
+  tui: boolean;
   claudeCommand: string;
 }
 
@@ -84,6 +87,7 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
   const options: Partial<CciOptions> & { addDirs: string[] } = { addDirs: [] };
   let dangerouslySkipPermissions: boolean | undefined;
   let minimal = false;
+  let tui = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -133,6 +137,10 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
       case "--bare":
         minimal = true;
         break;
+      case "--tui":
+      case "--live":
+        tui = true;
+        break;
       default:
         break;
     }
@@ -150,6 +158,7 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     addDirs: options.addDirs,
     mcpConfig: options.mcpConfig,
     minimal,
+    tui,
     claudeCommand: options.claudeCommand || env.CLAUDE_INTERCOM_CLAUDE_COMMAND || "claude",
   };
 }
@@ -198,10 +207,76 @@ async function openIntercomComposer(daemon: ClaudeWorkerDaemon): Promise<void> {
   }
 }
 
+function repoRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+export function buildTuiAppendSystemPrompt(name: string, id: string): string {
+  return [
+    `You are a Claude Code session connected to a local intercom as "${name}" (id ${id}).`,
+    "Other local coding-agent sessions can message you. Inbound messages are delivered automatically as monitor events that begin with \"Intercom message from\".",
+    "When such an event arrives, treat it as a request from that peer:",
+    "- If it is marked \"[asking — awaiting your reply]\", the sender is BLOCKING on your answer. Do the work if appropriate, then answer with the intercom_reply tool: intercom_reply({ message: \"...\" }).",
+    "- Otherwise, act if needed and use intercom_send to respond or acknowledge.",
+    "You also have intercom_list, intercom_whoami, intercom_status, intercom_pending, and intercom_set_summary. Keep intercom replies concise.",
+  ].join("\n");
+}
+
+// Live TUI mode: run an interactive `claude` that owns the intercom identity
+// (via the plugin's MCP server) and auto-arms the inbox monitor (via the
+// plugin's monitors.json), so inbound messages are injected into the live
+// session — the coi-style "sit in it and get woken" experience. Uses the local
+// Monitor mechanism (no Anthropic channel relay), so it works behind cliproxy.
+async function runCciTui(options: CciOptions, id: string, name: string): Promise<number> {
+  const root = repoRoot();
+  const serverPath = join(root, "dist", "claude-server.mjs");
+  const monitorPath = join(root, "dist", "inbox-monitor.mjs");
+  if (!existsSync(serverPath) || !existsSync(monitorPath)) {
+    process.stderr.write(`cci --tui requires a build. Run \`npm run build\` in ${root} first.\n`);
+    return 1;
+  }
+  if (options.minimal) {
+    process.stderr.write("cci --tui ignores --minimal: --safe-mode would disable the intercom MCP server and the inbox monitor.\n");
+  }
+
+  const inboxPath = defaultInboxPath(id);
+  rmSync(inboxPath, { force: true }); // fresh session: only surface messages that arrive from now on
+
+  const args: string[] = ["--plugin-dir", root, "--append-system-prompt", buildTuiAppendSystemPrompt(name, id)];
+  if (options.model) args.push("--model", options.model);
+  if (options.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
+  else if (options.permissionMode) args.push("--permission-mode", options.permissionMode);
+  for (const dir of options.addDirs) args.push("--add-dir", dir);
+
+  process.stderr.write(`cci --tui: live intercom session ${name} (${id})\n`);
+  process.stderr.write("Inbound intercom messages appear in this session automatically; reply with the intercom_reply tool.\n");
+
+  const child = spawn(options.claudeCommand, args, {
+    cwd: options.cwd,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      CLAUDE_INTERCOM_NAME: name,
+      CLAUDE_INTERCOM_SESSION_ID: id,
+      ...(options.model ? { CLAUDE_INTERCOM_MODEL: options.model } : {}),
+      CLAUDE_INTERCOM_INBOX: inboxPath,
+    },
+  });
+  const [code, signal] = (await once(child, "exit")) as [number | null, NodeJS.Signals | null];
+  rmSync(inboxPath, { force: true });
+  if (typeof code === "number") return code;
+  return signal === "SIGINT" ? 130 : 1;
+}
+
 export async function runCci(options: CciOptions): Promise<number> {
   const identity = detectIdentity(options.cwd);
   const id = sanitizeSegment(options.id ?? identity.id);
   const name = options.name ?? identity.name;
+
+  if (options.tui) {
+    return runCciTui(options, id, name);
+  }
+
   const statePath = options.statePath ?? DEFAULT_WORKER_STATE_PATH;
 
   // Minimal mode runs each woken turn with Claude Code's --safe-mode, which

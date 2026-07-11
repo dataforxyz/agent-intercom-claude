@@ -21,5 +21,6 @@
   ],
   "skills": "./skills/",
   "commands": "./commands/",
+  "monitors": "./monitors/monitors.json",
   "mcpServers": "./.mcp.json"
 }

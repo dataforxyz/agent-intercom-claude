@@ -58,12 +58,27 @@ Zero-cost when empty and simple, but it can only piggyback on the recipient's
 
 ## Summary
 
-| Mechanism                     | Wakes idle? | System access | Needs live session | Experimental |
-|-------------------------------|-------------|---------------|--------------------|--------------|
-| Headless `claude -p` worker   | n/a (spawns fresh worker) | full | no | no |
-| `Monitor` tool client         | yes (if running) | full (live session) | yes | no |
-| Native Channels               | sometimes   | full (live session) | yes | yes |
-| `PreToolUse` hook polling      | no          | full (live session) | yes | no |
+| Mechanism                     | Wakes idle? | System access | Needs live session | Experimental | Shipped as |
+|-------------------------------|-------------|---------------|--------------------|--------------|------------|
+| Headless `claude -p` worker   | n/a (spawns fresh worker) | full | no | no | `cci` (default) |
+| `Monitor` inbox (plugin)      | yes (if running) | full (live session) | yes | no | **`cci --tui`** |
+| Native Channels               | sometimes   | full (live session) | yes | yes | — |
+| `PreToolUse` hook polling      | no          | full (live session) | yes | no | — |
 
-`claude-intercom` ships the first row. The others are documented so you can add
-a live-session delivery path if your workflow calls for one.
+`claude-intercom` ships the first two rows: `cci` (headless worker) and `cci
+--tui` (live interactive session woken in place via a local plugin monitor).
+
+### How `cci --tui` uses the Monitor mechanism
+
+`cci --tui` launches `claude --plugin-dir <repo>` with an intercom identity and
+`CLAUDE_INTERCOM_INBOX=<path>` in the environment. The bundled plugin's MCP
+server owns the broker identity and appends each inbound message to that inbox
+file; the plugin's auto-armed monitor (`monitors/monitors.json`, `when:
+"always"`) runs `dist/inbox-monitor.mjs`, which tails the inbox and prints one
+line per new message. Claude Code's Monitor machinery injects each line into the
+live session, which then answers with `intercom_reply`. This is purely local —
+no Anthropic channel relay — so it works behind a custom `ANTHROPIC_BASE_URL`.
+
+Channels (`notifications/claude/channel`) would be a cleaner two-way path, but it
+routes through Anthropic's notification infrastructure and may be gated behind a
+custom base URL, so it is left as a possible future add-on.

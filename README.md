@@ -201,7 +201,8 @@ Flags (all optional; `ccim` accepts the same set):
 | `--cwd <dir>` | Working directory for the worker's turns (default: cwd) |
 | `--model <model>` | Model for woken turns (`opus`, `sonnet`, `haiku`, or a full id) |
 | `--instructions <text>` | System-prompt guidance appended to every woken turn |
-| `--minimal` / `--bare` | Run woken turns with `--safe-mode` (see below); implied by `ccim` |
+| `--tui` / `--live` | Run as a LIVE interactive Claude session woken in place (see below) instead of a headless `claude -p` worker |
+| `--minimal` / `--bare` | Run woken turns with `--safe-mode` (see below); implied by `ccim` (ignored with `--tui`) |
 | `--safe` | Use standard permission prompts instead of the yolo default |
 | `--permission-mode <mode>` | Explicit permission mode (`acceptEdits`, `plan`, …) |
 | `--add-dir <dir>` | Extra directory the worker may access (repeatable) |
@@ -222,6 +223,40 @@ headless mode (headless turns cannot answer interactive permission prompts). Use
 `--safe` to switch to the standard permission mode, or `--permission-mode
 <mode>` to choose one explicitly. Only run yolo workers on a machine account you
 trust.
+
+## Live TUI Mode (`cci --tui`)
+
+Default `cci` is a headless worker: each message spawns a `claude -p` turn. With
+`--tui`, `cci` instead opens a **live interactive Claude session that you sit in
+and that is woken in place** — the Codex `coi` experience. Inbound intercom
+messages are injected into the running session and it replies over the broker;
+you see everything and can type alongside it.
+
+```bash
+cci --tui --name worker-a --id worker-a
+```
+
+Claude Code has no Codex-style app-server, so this uses Claude Code's local
+**Monitor** mechanism (no Anthropic channel relay — works behind a custom
+`ANTHROPIC_BASE_URL`/proxy). Under the hood `cci --tui` launches `claude
+--plugin-dir <this repo>` with an intercom identity in the environment; the
+bundled plugin supplies:
+
+- the intercom **MCP server** (registers this session's identity + sends replies),
+- a durable **inbox** the server appends inbound messages to, and
+- an auto-armed **monitor** (`monitors/monitors.json`) that tails the inbox and
+  injects each new message into the live session.
+
+When someone `intercom_ask`s the session, the woken turn answers with the
+`intercom_reply` tool (an appended system prompt explains this). `--minimal` is
+ignored here because `--safe-mode` would disable the very MCP server and monitor
+this mode relies on.
+
+Requirements/caveats: needs a built checkout (`npm run build`); requires an
+interactive terminal (Monitor is interactive-only); and Monitor must be enabled
+in your Claude Code (it is unavailable when `DISABLE_TELEMETRY` or
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set, or on Bedrock/Vertex/Foundry).
+See [docs/wake-mechanisms.md](docs/wake-mechanisms.md).
 
 ## Normal And Minimal Workers
 
