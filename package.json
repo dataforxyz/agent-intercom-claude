@@ -1,6 +1,6 @@
 {
   "name": "claude-intercom",
-  "version": "0.3.0",
+  "version": "0.9.0",
   "description": "Claude Code MCP plugin and wakeable worker for direct local messaging with Pi, Codex, and Claude coding-agent sessions.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
