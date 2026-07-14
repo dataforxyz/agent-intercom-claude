@@ -213,6 +213,7 @@ Flags (all optional; `ccim` accepts the same set):
 | `--id <id>` | Stable intercom session id (defaults to a git-derived id) |
 | `--cwd <dir>` | Working directory for the worker's turns (default: cwd) |
 | `--model <model>` | Model for woken turns (`opus`, `sonnet`, `haiku`, or a full id) |
+| `--effort <level>` | Claude effort for every woken turn (`low`, `medium`, `high`, `xhigh`, or `max`) |
 | `--instructions <text>` | System-prompt guidance appended to every woken turn |
 | `--tui` / `--live` | Run as a LIVE interactive Claude session woken in place (see below) instead of a headless `claude -p` worker |
 | `--minimal` / `--bare` | Run woken turns with `--safe-mode` (see below); implied by `ccim` (ignored with `--tui`) |
@@ -225,7 +226,7 @@ Flags (all optional; `ccim` accepts the same set):
 
 ```bash
 cci --cwd /path/to/project --instructions "Reply tersely. Ask before destructive changes."
-cci --model opus --name reviewer --id reviewer
+cci --model opus --effort max --name reviewer --id reviewer
 cci --safe --name safe-worker --id safe-worker      # standard permission prompts instead of yolo
 cci --add-dir ../shared-lib --name worker-a --id worker-a
 ```
@@ -373,6 +374,7 @@ environment when no config file is given (`CLAUDE_INTERCOM_WORKER_ID`, `…_NAME
 | `CLAUDE_INTERCOM_NAME` | MCP server | Discoverable session name |
 | `CLAUDE_INTERCOM_SESSION_ID` | MCP server | Stable intercom id |
 | `CLAUDE_INTERCOM_MODEL` | MCP server | Model label shown to peers |
+| `CLAUDE_INTERCOM_EFFORT` | `cci` / `ccim` | Effort level forwarded to every Claude turn |
 | `CLAUDE_INTERCOM_CWD` / `_INSTRUCTIONS` | `cci` / `ccim` | Defaults for `--cwd` / `--instructions` |
 | `CLAUDE_INTERCOM_CLAUDE_COMMAND` | workers | Claude Code executable (default `claude`) |
 | `CLAUDE_INTERCOM_WORKER_ID` / `_NAME` / `_CWD` / `_MODEL` / `_INSTRUCTIONS` / `_STATE` | `claude-intercom-worker` | Single-worker config when no `--config` file is given |

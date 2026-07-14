@@ -26,13 +26,14 @@ test("createDefaultIdentity derives readable per-process defaults", () => {
   assert.equal(identity.name, "claude:project:main#4321");
 });
 
-test("parseCciArgs reads name, id, cwd, instructions, and model", () => {
+test("parseCciArgs reads name, id, cwd, instructions, model, and effort", () => {
   const parsed = parseCciArgs([
     "--name", "worker",
     "--id=worker-1",
     "--cwd", "/tmp/project",
     "--instructions", "Stay terse.",
     "--model=opus",
+    "--effort", "max",
   ], {});
 
   assert.equal(parsed.name, "worker");
@@ -40,6 +41,7 @@ test("parseCciArgs reads name, id, cwd, instructions, and model", () => {
   assert.equal(parsed.cwd, "/tmp/project");
   assert.equal(parsed.instructions, "Stay terse.");
   assert.equal(parsed.model, "opus");
+  assert.equal(parsed.effort, "max");
 });
 
 test("parseCciArgs tui defaults to false and is enabled by --tui/--live", () => {
@@ -108,10 +110,12 @@ test("parseCciArgs falls back to env vars, then defaults", () => {
     CLAUDE_INTERCOM_NAME: "env-name",
     CLAUDE_INTERCOM_SESSION_ID: "env-id",
     CLAUDE_INTERCOM_CLAUDE_COMMAND: "claude-custom",
+    CLAUDE_INTERCOM_EFFORT: "high",
   });
   assert.equal(parsed.name, "env-name");
   assert.equal(parsed.id, "env-id");
   assert.equal(parsed.claudeCommand, "claude-custom");
+  assert.equal(parsed.effort, "high");
 });
 
 test("parseCciArgs defaults claudeCommand to \"claude\"", () => {

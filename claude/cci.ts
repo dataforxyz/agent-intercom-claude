@@ -15,6 +15,7 @@ export interface CciOptions {
   cwd: string;
   instructions?: string;
   model?: string;
+  effort?: string;
   statePath?: string;
   permissionMode?: string;
   dangerouslySkipPermissions: boolean;
@@ -110,6 +111,9 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
       case "--model":
         options.model = value ?? readValue(argv, index++, key);
         break;
+      case "--effort":
+        options.effort = value ?? readValue(argv, index++, key);
+        break;
       case "--state":
         options.statePath = resolve(value ?? readValue(argv, index++, key));
         break;
@@ -152,6 +156,7 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     name: options.name ?? env.CLAUDE_INTERCOM_NAME,
     instructions: options.instructions ?? env.CLAUDE_INTERCOM_INSTRUCTIONS,
     model: options.model ?? env.CLAUDE_INTERCOM_MODEL,
+    effort: options.effort ?? env.CLAUDE_INTERCOM_EFFORT,
     statePath: options.statePath,
     permissionMode: dangerouslySkipPermissions ? undefined : options.permissionMode,
     dangerouslySkipPermissions: dangerouslySkipPermissions ?? true,
@@ -244,6 +249,7 @@ async function runCciTui(options: CciOptions, id: string, name: string): Promise
 
   const args: string[] = ["--plugin-dir", root, "--append-system-prompt", buildTuiAppendSystemPrompt(name, id)];
   if (options.model) args.push("--model", options.model);
+  if (options.effort) args.push("--effort", options.effort);
   if (options.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
   else if (options.permissionMode) args.push("--permission-mode", options.permissionMode);
   for (const dir of options.addDirs) args.push("--add-dir", dir);
@@ -285,7 +291,10 @@ export async function runCci(options: CciOptions): Promise<number> {
   // normally — the focused-worker analog of the Codex minimal profile. The
   // built-in Task tool is retained, so a minimal worker can still delegate to
   // general-purpose subagents (matching Codex minimal's multi_agent = true).
-  const claudeArgs = options.minimal ? ["--safe-mode"] : undefined;
+  const claudeArgs = [
+    ...(options.minimal ? ["--safe-mode"] : []),
+    ...(options.effort ? ["--effort", options.effort] : []),
+  ];
 
   const agent: WorkerAgentConfig = {
     id,
@@ -297,7 +306,7 @@ export async function runCci(options: CciOptions): Promise<number> {
     dangerouslySkipPermissions: options.dangerouslySkipPermissions,
     addDirs: options.addDirs.length ? options.addDirs : undefined,
     mcpConfig: options.mcpConfig,
-    claudeArgs,
+    claudeArgs: claudeArgs.length ? claudeArgs : undefined,
   };
 
   const config: WorkerConfig = {
