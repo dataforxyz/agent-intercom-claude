@@ -8,6 +8,7 @@
 | Codex | [`agent-intercom-codex`](https://github.com/dataforxyz/agent-intercom-codex) |
 | Claude Code | [`agent-intercom-claude`](https://github.com/dataforxyz/agent-intercom-claude) |
 | OpenCode | [`agent-intercom-opencode`](https://github.com/dataforxyz/agent-intercom-opencode) |
+| Fleet lifecycle | [`agent-intercom-orchestrator`](https://github.com/dataforxyz/agent-intercom-orchestrator) |
 
 ## Origin and thanks
 
@@ -89,6 +90,15 @@ This provides:
 - `claude-intercom-worker`
 - `cci` — start a normal wakeable worker
 - `ccim` — start a minimal wakeable worker (`cci --minimal`)
+
+To let a Pi manager create Claude workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
+
+```bash
+pi install git:github.com/dataforxyz/agent-intercom-pi
+pi install git:github.com/dataforxyz/agent-intercom-orchestrator
+```
+
+Restart Pi or run `/reload`, then call `agent_fleet({ action: "doctor" })`. The orchestrator invokes the installed `cci`/`ccim` commands; it does not replace this Claude adapter.
 
 `cci` and `ccim` are the recommended entry points when you want an attached,
 wakeable Claude session. Unlike a plain MCP session or a detached headless
