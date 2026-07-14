@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/dataforxyz/agent-intercom-claude",
   "repository": "https://github.com/dataforxyz/agent-intercom-claude",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "keywords": [
     "intercom",
     "claude",

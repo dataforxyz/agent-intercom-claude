@@ -2,7 +2,7 @@
   "name": "claude-intercom",
   "version": "0.2.0",
   "description": "Claude Code MCP plugin and wakeable worker for direct local messaging with Pi, Codex, and Claude coding-agent sessions.",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "dist/claude-server.mjs",
   "bin": {
@@ -27,7 +27,10 @@
     ".mcp.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses/**/*",
+    "COPYRIGHT"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Changed the current project license to `AGPL-3.0-or-later`. Previously published MIT versions remain under MIT, and original `pi-intercom` notices are preserved in `THIRD_PARTY_NOTICES.md`.
+
 ## 0.2.0
 
 - Upgrade the bundled broker and client to strict intercom protocol v3.
