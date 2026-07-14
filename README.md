@@ -81,7 +81,7 @@ at any time with `claude --resume <session-id>`.
 Install the package so the command-line entry points are on `PATH`:
 
 ```bash
-npm install -g github:dataforxyz/agent-intercom-claude
+npm install -g @dataforxyz/agent-intercom-claude
 ```
 
 This provides:
@@ -94,8 +94,8 @@ This provides:
 To let a Pi manager create Claude workers with owned systemd cgroups, leases, model/effort selection, logs, and verified cleanup, install the companion Pi packages:
 
 ```bash
-pi install git:github.com/dataforxyz/agent-intercom-pi
-pi install git:github.com/dataforxyz/agent-intercom-orchestrator
+pi install npm:@dataforxyz/agent-intercom-pi
+pi install npm:@dataforxyz/agent-intercom-orchestrator
 ```
 
 Restart Pi or run `/reload`, then call `agent_fleet({ action: "doctor" })`. The orchestrator invokes the installed `cci`/`ccim` commands; it does not replace this Claude adapter.
