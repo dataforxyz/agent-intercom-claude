@@ -60,5 +60,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataforxyz/agent-intercom-claude.git"
+  },
+  "homepage": "https://github.com/dataforxyz/agent-intercom-claude#readme",
+  "bugs": {
+    "url": "https://github.com/dataforxyz/agent-intercom-claude/issues"
   }
 }
