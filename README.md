@@ -170,8 +170,9 @@ tools without the skill.
 ## Tools
 
 - `intercom_whoami`: show this session's intercom ID, name, cwd, and model.
+- `intercom_team`: show the current manager and live coworkers owned by that manager.
 - `intercom_status`: show connection status and pending message counts.
-- `intercom_list`: list local Pi, Codex, and Claude sessions.
+- `intercom_list`: list local Pi, Codex, and Claude sessions globally.
 - `intercom_set_summary`: publish a short discoverable status.
 - `intercom_send`: send a non-blocking message.
 - `intercom_ask`: send a question and wait for the target's reply.
@@ -181,7 +182,10 @@ tools without the skill.
 Example:
 
 ```typescript
-intercom_list({ scope: "machine" })
+intercom_team({})
+// Manager: manager-id [connected]
+// You: worker-a
+// Coworkers: reviewer target=reviewer (codex, reviewer, running) [connected]
 
 intercom_ask({
   to: "worker-a",

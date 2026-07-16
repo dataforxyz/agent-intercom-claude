@@ -76,6 +76,12 @@ export function buildToolDefinitions(runtime: ClaudeIntercomRuntime): ToolDefini
       handler: async () => runtime.whoami(),
     },
     {
+      name: "intercom_team",
+      description: "Show your current manager and the live coworkers owned by that manager. No arguments are required.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      handler: async () => runtime.team(),
+    },
+    {
       name: "intercom_status",
       description: "Show intercom connection status, active sessions, unread messages, and pending asks.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },

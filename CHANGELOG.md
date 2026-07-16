@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `intercom_team` so owned Claude coworkers can find their current manager and live siblings without a global peer search.
+
 ## 0.9.3 - 2026-07-15
 
 - Coordinate the Agent Intercom family on the `0.9.3` release line.

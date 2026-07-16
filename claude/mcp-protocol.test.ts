@@ -5,6 +5,7 @@ import { handleMcpRequest } from "./mcp-protocol.ts";
 function fakeRuntime() {
   return {
     whoami: async () => ({ content: [{ type: "text" as const, text: "me" }], structuredContent: { session_id: "s1" } }),
+    team: async () => ({ content: [{ type: "text" as const, text: "Manager: manager-1" }], structuredContent: { manager: { target: "manager-1" } } }),
     status: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
     list: async () => ({ content: [{ type: "text" as const, text: "sessions" }], structuredContent: { sessions: [] } }),
     setSummary: async (summary: string) => ({ content: [{ type: "text" as const, text: `summary:${summary}` }] }),
@@ -26,9 +27,15 @@ test("tools/list includes intercom tools", async () => {
   const response = await handleMcpRequest({ id: 2, method: "tools/list" }, fakeRuntime());
   const tools = (response?.result as any).tools as Array<{ name: string }>;
 
+  assert.ok(tools.some((tool) => tool.name === "intercom_team"));
   assert.ok(tools.some((tool) => tool.name === "intercom_list"));
   assert.ok(tools.some((tool) => tool.name === "intercom_ask"));
   assert.ok(tools.some((tool) => tool.name === "intercom_reply"));
+});
+
+test("intercom_team requires no arguments and returns the manager", async () => {
+  const response = await handleMcpRequest({ id: 20, method: "tools/call", params: { name: "intercom_team", arguments: {} } }, fakeRuntime());
+  assert.equal(((response?.result as any).content[0]).text, "Manager: manager-1");
 });
 
 test("tools/call dispatches to the selected tool", async () => {

@@ -27,6 +27,7 @@ worker can read files, run commands, and reply on its own.
 ## Tools
 
 - `intercom_whoami`: show this session's intercom ID, name, cwd, and model.
+- `intercom_team`: show the current orchestrator manager and live same-manager coworkers.
 - `intercom_status`: connection, active session count, unread messages, pending asks.
 - `intercom_list`: list connected Pi, Codex, and Claude sessions.
 - `intercom_set_summary`: publish a short discoverable status.
@@ -39,7 +40,7 @@ worker can read files, run commands, and reply on its own.
 
 1. Call `intercom_status` or `intercom_whoami` to confirm this session is connected.
 2. Call `intercom_set_summary` with a concise status so peers can discover your role.
-3. Call `intercom_list` to choose a target. Prefer exact names or full IDs when duplicates are possible.
+3. If this is an orchestrator-owned coworker, call `intercom_team` to get the manager and sibling targets without searching globally. Otherwise use `intercom_list`.
 4. Use `intercom_send` for non-blocking updates and handoffs.
 5. Use `intercom_ask` only when you need the answer before continuing.
 6. Call `intercom_pending` before ending a coordination turn, then answer blocking asks with `intercom_reply`.
