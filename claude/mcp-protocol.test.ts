@@ -31,11 +31,21 @@ test("tools/list includes intercom tools", async () => {
   assert.ok(tools.some((tool) => tool.name === "intercom_list"));
   assert.ok(tools.some((tool) => tool.name === "intercom_ask"));
   assert.ok(tools.some((tool) => tool.name === "intercom_reply"));
+  const reply = tools.find((tool) => tool.name === "intercom_reply") as any;
+  assert.ok(reply.inputSchema.properties.which);
+  assert.equal(reply.inputSchema.properties.reply_to, undefined);
 });
 
 test("intercom_team requires no arguments and returns the manager", async () => {
   const response = await handleMcpRequest({ id: 20, method: "tools/call", params: { name: "intercom_team", arguments: {} } }, fakeRuntime());
   assert.equal(((response?.result as any).content[0]).text, "Manager: manager-1");
+});
+
+test("intercom_reply forwards the sender and oldest/latest selector", async () => {
+  const runtime = fakeRuntime();
+  runtime.reply = async (message: string, to?: string, which?: string) => ({ content: [{ type: "text" as const, text: `reply:${to}:${which}:${message}` }] });
+  const response = await handleMcpRequest({ id: 21, method: "tools/call", params: { name: "intercom_reply", arguments: { to: "planner", which: "oldest", message: "answer" } } }, runtime);
+  assert.equal(((response?.result as any).content[0]).text, "reply:planner:oldest:answer");
 });
 
 test("tools/call dispatches to the selected tool", async () => {

@@ -5,6 +5,8 @@ import {
   detectGitRoot,
   formatSessionList,
   resolveSessionTarget,
+  selectPendingAsk,
+  type PendingInboundMessage,
 } from "./runtime.ts";
 import type { SessionInfo } from "../types.ts";
 
@@ -71,6 +73,21 @@ test("formatSessionList marks self and same cwd", () => {
 
   assert.match(output, /planner \(abc12345\)/);
   assert.match(output, /\[self, same cwd, idle\]/);
+});
+
+test("selectPendingAsk uses oldest/latest without exposing message IDs", () => {
+  const from = session({ id: "sender-1", name: "sender" });
+  const pending = (id: string, receivedAt: number): PendingInboundMessage => ({
+    from,
+    message: { id, timestamp: receivedAt, expectsReply: true, content: { text: id } },
+    receivedAt,
+    read: false,
+  });
+  const asks = [pending("ask-1", 10), pending("ask-2", 20)];
+
+  assert.throws(() => selectPendingAsk(asks, "sender"), /specify `which`/);
+  assert.equal(selectPendingAsk(asks, "sender", "oldest").message.id, "ask-1");
+  assert.equal(selectPendingAsk(asks, "sender", "latest").message.id, "ask-2");
 });
 
 test("detectGitRoot finds the current repository root", () => {

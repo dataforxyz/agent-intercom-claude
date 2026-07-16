@@ -183,7 +183,9 @@ tools without the skill.
 - `intercom_send`: send a non-blocking message.
 - `intercom_ask`: send a question and wait for the target's reply.
 - `intercom_pending`: read queued inbound messages and unresolved asks.
-- `intercom_reply`: reply to a pending inbound ask.
+- `intercom_reply`: reply to a pending inbound ask; use `to` plus `which: "oldest" | "latest"` if one sender has multiple unresolved asks.
+
+Pending output never exposes protocol message IDs. Keep at most one unresolved `intercom_ask` to the same recipient; the broker rejects a second ask and recommends `intercom_send` for a non-blocking follow-up.
 
 Example:
 

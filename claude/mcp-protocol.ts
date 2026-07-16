@@ -163,18 +163,18 @@ export function buildToolDefinitions(runtime: ClaudeIntercomRuntime): ToolDefini
     },
     {
       name: "intercom_reply",
-      description: "Reply to a pending inbound ask. If exactly one ask is pending, to/reply_to can be omitted.",
+      description: "Reply to a pending inbound ask. Use to plus which=oldest/latest when one sender has multiple unresolved asks.",
       inputSchema: {
         type: "object",
         properties: {
           message: { type: "string" },
-          to: { type: "string" },
-          reply_to: { type: "string" },
+          to: { type: "string", description: "Optional sender/session selector; never a message or thread ID." },
+          which: { type: "string", enum: ["oldest", "latest"], description: "Select the oldest or latest ask from the chosen sender." },
         },
         required: ["message"],
         additionalProperties: false,
       },
-      handler: async (args) => runtime.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : undefined, typeof args.reply_to === "string" ? args.reply_to : undefined),
+      handler: async (args) => runtime.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : undefined, args.which === "oldest" || args.which === "latest" ? args.which : undefined),
     },
   ];
 }
