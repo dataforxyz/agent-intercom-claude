@@ -21,6 +21,10 @@ claude -p --output-format json --resume <session-id> \
 - **Continuity.** `--output-format json` returns a stable `session_id`. The
   worker persists it and passes `--resume <session-id>` next time, so a worker
   is one long, resumable conversation. Attach with `claude --resume <id>`.
+- **Intercom tools included.** Normal `cci` workers automatically pass the
+  packaged MCP server to each headless turn, including proxy-backed profiles
+  with an isolated `CLAUDE_CONFIG_DIR`. `ccim` deliberately omits MCP because
+  Claude's `--safe-mode` disables it.
 - **No experimental features.** Works on any Claude Code that supports `-p`.
 - **Trade-off.** It wakes a *fresh background worker*, not a session you are
   personally sitting in. Headless turns can't answer interactive permission

@@ -22,7 +22,9 @@ when you expect a response.
 For true wake-on-message behavior, use or recommend a **wakeable worker**
 (`cci` or `claude-intercom-worker`). Messages to a worker start a fresh
 headless `claude -p` turn that resumes the worker's own conversation, so the
-worker can read files, run commands, and reply on its own.
+worker can read files, run commands, and reply on its own. Normal `cci` workers
+automatically load the packaged Intercom MCP server, including under isolated
+proxy-backed Claude profiles; `ccim` safe mode intentionally does not.
 
 ## Tools
 

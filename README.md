@@ -56,7 +56,9 @@ the worker uses the most robust primitive available: the headless CLI.
 1. The worker registers an intercom identity on the local broker and idles.
 2. When a message arrives, the worker runs
    `claude -p --output-format json --resume <session-id> ...`, feeding the
-   message text on stdin.
+   message text on stdin. Normal `cci` workers automatically receive the
+   packaged Intercom MCP server, even under an isolated `CLAUDE_CONFIG_DIR` or
+   custom `ANTHROPIC_BASE_URL`.
 3. Claude runs a full turn — it can use Bash, Read, Edit, and every other
    Claude Code tool, subject to the worker's permission mode — and prints a
    final result plus a stable `session_id`.
@@ -118,11 +120,15 @@ They are optional convenience shortcuts: the installed `cci` and `ccim`
 commands work directly, but aliases make stable identities and project-specific
 defaults easier to reuse without copying a long command.
 
-Then add the MCP server to Claude Code:
+For a plain, already-active Claude Code session, add the MCP server explicitly:
 
 ```bash
 claude mcp add claude-intercom -- claude-intercom-mcp
 ```
+
+`cci` does this automatically for each normal headless worker. `ccim` intentionally
+uses Claude's `--safe-mode`, which disables MCP servers along with plugins, hooks,
+and skills.
 
 Optional identity variables can be attached at registration time:
 
