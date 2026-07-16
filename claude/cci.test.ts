@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
-import { buildTuiAppendSystemPrompt, createDefaultIdentity, parseCciArgs, resolveIntercomSelection, sanitizeSegment } from "./cci.ts";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { buildTuiAppendSystemPrompt, createDefaultIdentity, parseCciArgs, resolveIntercomSelection, sanitizeSegment, writeDefaultWorkerMcpConfig } from "./cci.ts";
 
 test("sanitizeSegment keeps readable safe ids", () => {
   assert.equal(sanitizeSegment("Claude:Repo Main#123"), "claude:repo-main-123");
@@ -56,6 +58,22 @@ test("buildTuiAppendSystemPrompt names the identity and the reply protocol", () 
   assert.match(prompt, /claude-reviewer-1/);
   assert.match(prompt, /intercom_reply/);
   assert.match(prompt, /awaiting your reply/);
+});
+
+test("writeDefaultWorkerMcpConfig exposes the packaged intercom server to headless Claude", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "claude-cci-mcp-"));
+  const root = join(temp, "package");
+  const intercomDir = join(temp, "intercom");
+  const serverPath = join(root, "dist", "claude-server.mjs");
+  await mkdir(join(root, "dist"), { recursive: true });
+  await writeFile(serverPath, "// test server\n");
+  try {
+    const path = writeDefaultWorkerMcpConfig(root, intercomDir);
+    const parsed = JSON.parse(await readFile(path, "utf8"));
+    assert.deepEqual(parsed, { mcpServers: { "claude-intercom": { command: process.execPath, args: [serverPath] } } });
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 });
 
 test("parseCciArgs defaults to dangerouslySkipPermissions=true when neither --yolo nor --safe is given", () => {

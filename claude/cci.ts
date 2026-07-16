@@ -1,12 +1,13 @@
 import { once } from "node:events";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { ClaudeWorkerDaemon } from "./worker-daemon.ts";
 import { defaultInboxPath } from "./inbox.ts";
+import { ensureIntercomRuntimeDir, getIntercomDirPath, restrictIntercomRuntimeFile } from "../broker/paths.ts";
 import { DEFAULT_WORKER_STATE_PATH, type WorkerAgentConfig, type WorkerConfig } from "./worker-config.ts";
 
 export interface CciOptions {
@@ -216,6 +217,21 @@ function repoRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..");
 }
 
+export function writeDefaultWorkerMcpConfig(
+  root: string = repoRoot(),
+  intercomDir: string = getIntercomDirPath(),
+): string {
+  const serverPath = join(root, "dist", "claude-server.mjs");
+  if (!existsSync(serverPath)) {
+    throw new Error(`Claude intercom MCP server is missing. Run \`npm run build\` in ${root}.`);
+  }
+  ensureIntercomRuntimeDir(intercomDir);
+  const path = join(intercomDir, `claude-worker-mcp-${shortHash(root)}.json`);
+  writeFileSync(path, `${JSON.stringify({ mcpServers: { "claude-intercom": { command: process.execPath, args: [serverPath] } } }, null, 2)}\n`, { mode: 0o600 });
+  restrictIntercomRuntimeFile(path);
+  return path;
+}
+
 export function buildTuiAppendSystemPrompt(name: string, id: string): string {
   return [
     `You are a Claude Code session connected to a local intercom as "${name}" (id ${id}).`,
@@ -284,6 +300,7 @@ export async function runCci(options: CciOptions): Promise<number> {
   }
 
   const statePath = options.statePath ?? DEFAULT_WORKER_STATE_PATH;
+  const mcpConfig = options.mcpConfig ?? (options.minimal ? undefined : writeDefaultWorkerMcpConfig());
 
   // Minimal mode runs each woken turn with Claude Code's --safe-mode, which
   // disables CLAUDE.md, skills, plugins, hooks, MCP servers, and *custom* agent
@@ -305,7 +322,7 @@ export async function runCci(options: CciOptions): Promise<number> {
     permissionMode: options.permissionMode,
     dangerouslySkipPermissions: options.dangerouslySkipPermissions,
     addDirs: options.addDirs.length ? options.addDirs : undefined,
-    mcpConfig: options.mcpConfig,
+    mcpConfig,
     claudeArgs: claudeArgs.length ? claudeArgs : undefined,
   };
 

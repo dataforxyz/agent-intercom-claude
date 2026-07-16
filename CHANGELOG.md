@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add `intercom_team` so owned Claude coworkers can find their current manager and live siblings without a global peer search.
+- Automatically supply the packaged Intercom MCP server to normal headless `cci` workers, including isolated proxy-backed Claude profiles.
 
 ## 0.9.3 - 2026-07-15
 
