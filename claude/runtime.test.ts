@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import {
+  ClaudeIntercomRuntime,
   buildClaudeRuntimeIdentity,
   detectGitRoot,
   formatSessionList,
@@ -8,7 +10,31 @@ import {
   selectPendingAsk,
   type PendingInboundMessage,
 } from "./runtime.ts";
+import type { IntercomClient } from "../broker/client.ts";
 import type { SessionInfo } from "../types.ts";
+
+class FakeIntercomClient extends EventEmitter {
+  connected = false;
+  connectCount = 0;
+  sessionId: string | null = null;
+
+  isConnected(): boolean { return this.connected; }
+  async connect(_registration: unknown, sessionId?: string): Promise<void> {
+    this.connected = true;
+    this.connectCount += 1;
+    this.sessionId = sessionId ?? "fake-session";
+  }
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.sessionId = null;
+  }
+  acknowledgeMessage(): void {}
+  drop(): void {
+    this.connected = false;
+    this.sessionId = null;
+    this.emit("disconnected", new Error("broker restarted"));
+  }
+}
 
 function session(overrides: Partial<SessionInfo>): SessionInfo {
   return {
@@ -88,6 +114,30 @@ test("selectPendingAsk uses oldest/latest without exposing message IDs", () => {
   assert.throws(() => selectPendingAsk(asks, "sender"), /specify `which`/);
   assert.equal(selectPendingAsk(asks, "sender", "oldest").message.id, "ask-1");
   assert.equal(selectPendingAsk(asks, "sender", "latest").message.id, "ask-2");
+});
+
+test("runtime reconnects automatically after the broker connection drops", async () => {
+  const first = new FakeIntercomClient();
+  const second = new FakeIntercomClient();
+  const clients = [first, second];
+  const runtime = new ClaudeIntercomRuntime({
+    sessionId: "reconnect-claude",
+    name: "reconnect-claude",
+    cwd: process.cwd(),
+    model: "test",
+    startedAt: Date.now(),
+  }, {
+    clientFactory: () => clients.shift() as unknown as IntercomClient,
+    prepareConnection: async () => {},
+    reconnectDelays: [1],
+  });
+
+  await runtime.connect();
+  first.drop();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(second.connectCount, 1);
+  assert.equal(second.sessionId, "reconnect-claude");
+  await runtime.disconnect();
 });
 
 test("detectGitRoot finds the current repository root", () => {

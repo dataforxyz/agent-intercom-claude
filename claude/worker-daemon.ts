@@ -26,6 +26,12 @@ export type WorkerActivity =
 
 export type WorkerActivityReporter = (activity: WorkerActivity) => void;
 
+export interface VirtualClaudeAgentOptions {
+  client?: IntercomClient;
+  prepareConnection?: () => Promise<void>;
+  reconnectDelays?: number[];
+}
+
 export function formatWorkerActivity(activity: WorkerActivity): string {
   const sender = activity.from.name || activity.from.id;
   if (activity.type === "started") {
@@ -67,10 +73,17 @@ function formatMessage(from: SessionInfo, message: Message, agent: WorkerAgentCo
 }
 
 export class VirtualClaudeAgent {
-  private client = new IntercomClient();
+  private client: IntercomClient;
   private sessionId: string | null;
   private messageQueue: Promise<void> = Promise.resolve();
   private wakeTimestamps: number[] = [];
+  private connectPromise: Promise<void> | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempt = 0;
+  private reconnectEnabled = true;
+  private readonly intercomStartedAt = Date.now();
+  private readonly prepareConnection: () => Promise<void>;
+  private readonly reconnectDelays: number[];
 
   constructor(
     private readonly agent: WorkerAgentConfig,
@@ -79,8 +92,15 @@ export class VirtualClaudeAgent {
     private readonly claudeCommand: string,
     private readonly reportActivity: WorkerActivityReporter = reportToTerminal,
     private readonly runTurn: typeof runClaudeTurn = runClaudeTurn,
+    options: VirtualClaudeAgentOptions = {},
   ) {
     this.sessionId = agent.sessionId ?? state.agents[agent.id]?.sessionId ?? null;
+    this.client = options.client ?? new IntercomClient();
+    this.prepareConnection = options.prepareConnection ?? (async () => {
+      const config = loadConfig();
+      await spawnBrokerIfNeeded(config.brokerCommand, config.brokerArgs);
+    });
+    this.reconnectDelays = options.reconnectDelays?.length ? options.reconnectDelays : [250, 500, 1000, 2000, 5000];
   }
 
   get id(): string {
@@ -119,6 +139,7 @@ export class VirtualClaudeAgent {
   }
 
   async start(): Promise<void> {
+    this.reconnectEnabled = true;
     this.client.on("message", (from: SessionInfo, message: Message, deliveryId: string) => {
       this.routeMessage(from, message);
       this.client.acknowledgeMessage(deliveryId);
@@ -126,18 +147,71 @@ export class VirtualClaudeAgent {
     this.client.on("error", (error: Error) => {
       process.stderr.write(`worker ${this.agent.id}: ${error.message}\n`);
     });
-    await this.client.connect({
-      name: this.agent.name,
-      cwd: this.agent.cwd,
-      model: this.agent.model ?? "claude",
-      pid: process.pid,
-      startedAt: Date.now(),
-      lastActivity: Date.now(),
-      status: "idle",
-    }, this.agent.id);
+    this.client.on("disconnected", () => {
+      this.scheduleReconnect();
+    });
+    await this.connectIntercom();
+  }
+
+  private async connectIntercom(): Promise<void> {
+    this.clearReconnectTimer();
+    if (this.client.isConnected()) return;
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = (async () => {
+      await this.prepareConnection();
+      await this.client.connect({
+        name: this.agent.name,
+        cwd: this.agent.cwd,
+        model: this.agent.model ?? "claude",
+        pid: process.pid,
+        startedAt: this.intercomStartedAt,
+        lastActivity: Date.now(),
+        status: "idle",
+      }, this.agent.id);
+      this.reconnectAttempt = 0;
+    })();
+    try {
+      await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.reconnectEnabled || this.reconnectTimer) return;
+    const delay = this.reconnectDelays[Math.min(this.reconnectAttempt, this.reconnectDelays.length - 1)]!;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connectIntercom().then(() => {
+        if (!this.client.isConnected()) {
+          this.reconnectAttempt += 1;
+          this.scheduleReconnect();
+        }
+      }).catch((error) => {
+        this.reconnectAttempt += 1;
+        process.stderr.write(`worker ${this.agent.id}: reconnect failed: ${error instanceof Error ? error.message : String(error)}\n`);
+        this.scheduleReconnect();
+      });
+    }, delay);
+    this.reconnectTimer.unref?.();
+  }
+
+  private clearReconnectTimer(): void {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   async stop(): Promise<void> {
+    this.reconnectEnabled = false;
+    this.clearReconnectTimer();
+    if (this.connectPromise) {
+      try {
+        await this.connectPromise;
+      } catch {
+        // A failed in-progress connection is already closed.
+      }
+    }
     await this.client.disconnect();
   }
 

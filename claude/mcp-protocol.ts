@@ -131,7 +131,7 @@ export function buildToolDefinitions(runtime: ClaudeIntercomRuntime): ToolDefini
     },
     {
       name: "intercom_ask",
-      description: "Ask another intercom session a question and wait for its reply.",
+      description: "Ask another intercom session a question only when the next step depends on its reply. Use intercom_send for assignments, progress/status checkpoints, and notifications.",
       inputSchema: {
         type: "object",
         properties: {

@@ -185,7 +185,9 @@ tools without the skill.
 - `intercom_pending`: read queued inbound messages and unresolved asks.
 - `intercom_reply`: reply to a pending inbound ask; use `to` plus `which: "oldest" | "latest"` if one sender has multiple unresolved asks.
 
-Pending output never exposes protocol message IDs. Keep at most one unresolved `intercom_ask` to the same recipient; the broker rejects a second ask and recommends `intercom_send` for a non-blocking follow-up.
+Pending output never exposes protocol message IDs. Keep at most one unresolved `intercom_ask` to the same recipient; the broker rejects a second ask and recommends `intercom_send` for a non-blocking follow-up. Use `intercom_send`—not `intercom_ask`—for assignments and progress/status checkpoints.
+
+Persistent Claude workers and plain MCP runtimes automatically reconnect their stable Intercom identity after a broker restart, so a live worker does not need to be respawned merely to become reachable again.
 
 Example:
 

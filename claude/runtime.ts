@@ -168,15 +168,36 @@ function textResult(text: string, structuredContent?: Record<string, unknown>, i
   };
 }
 
+export interface ClaudeIntercomRuntimeOptions {
+  clientFactory?: () => IntercomClient;
+  prepareConnection?: () => Promise<void>;
+  reconnectDelays?: number[];
+}
+
 export class ClaudeIntercomRuntime {
   private client: IntercomClient | null = null;
+  private connectPromise: Promise<IntercomClient> | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempt = 0;
+  private reconnectEnabled = true;
   private identity: ClaudeRuntimeIdentity;
   private unread: PendingInboundMessage[] = [];
   private unresolvedAsks = new Map<string, PendingInboundMessage>();
   private replyWaiters = new Map<string, ReplyWaiter>();
 
-  constructor(identity: ClaudeRuntimeIdentity = buildClaudeRuntimeIdentity()) {
+  private readonly clientFactory: () => IntercomClient;
+  private readonly prepareConnection: () => Promise<void>;
+  private readonly reconnectDelays: number[];
+
+  constructor(identity: ClaudeRuntimeIdentity = buildClaudeRuntimeIdentity(), options: ClaudeIntercomRuntimeOptions = {}) {
     this.identity = identity;
+    this.clientFactory = options.clientFactory ?? (() => new IntercomClient());
+    this.prepareConnection = options.prepareConnection ?? (async () => {
+      const config = loadConfig();
+      if (!config.enabled) throw new Error("Intercom disabled");
+      await spawnBrokerIfNeeded(config.brokerCommand, config.brokerArgs);
+    });
+    this.reconnectDelays = options.reconnectDelays?.length ? options.reconnectDelays : [250, 500, 1000, 2000, 5000];
   }
 
   getIdentity(): ClaudeRuntimeIdentity {
@@ -184,11 +205,21 @@ export class ClaudeIntercomRuntime {
   }
 
   async connect(): Promise<IntercomClient> {
+    this.reconnectEnabled = true;
+    this.clearReconnectTimer();
     if (this.client?.isConnected()) return this.client;
-    const config = loadConfig();
-    if (!config.enabled) throw new Error("Intercom disabled");
-    await spawnBrokerIfNeeded(config.brokerCommand, config.brokerArgs);
-    const client = new IntercomClient();
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.connectOnce();
+    try {
+      return await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
+  }
+
+  private async connectOnce(): Promise<IntercomClient> {
+    await this.prepareConnection();
+    const client = this.clientFactory();
     client.on("message", (from: SessionInfo, message: Message, deliveryId: string) => {
       this.handleIncomingMessage(from, message);
       client.acknowledgeMessage(deliveryId);
@@ -201,6 +232,7 @@ export class ClaudeIntercomRuntime {
       }
       this.replyWaiters.clear();
       if (this.client === client) this.client = null;
+      this.scheduleReconnect();
     });
     await client.connect({
       name: this.identity.name,
@@ -212,13 +244,47 @@ export class ClaudeIntercomRuntime {
       status: "idle",
     }, this.identity.sessionId);
     this.client = client;
+    this.reconnectAttempt = 0;
     return client;
   }
 
+  private scheduleReconnect(): void {
+    if (!this.reconnectEnabled || this.reconnectTimer) return;
+    const delay = this.reconnectDelays[Math.min(this.reconnectAttempt, this.reconnectDelays.length - 1)]!;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect().then((client) => {
+        if (!client.isConnected()) {
+          this.reconnectAttempt += 1;
+          this.scheduleReconnect();
+        }
+      }).catch(() => {
+        this.reconnectAttempt += 1;
+        this.scheduleReconnect();
+      });
+    }, delay);
+    this.reconnectTimer.unref?.();
+  }
+
+  private clearReconnectTimer(): void {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
   async disconnect(): Promise<void> {
-    if (!this.client) return;
-    await this.client.disconnect();
+    this.reconnectEnabled = false;
+    this.clearReconnectTimer();
+    if (this.connectPromise) {
+      try {
+        await this.connectPromise;
+      } catch {
+        // A failed in-progress connection is already closed.
+      }
+    }
+    const client = this.client;
     this.client = null;
+    if (client) await client.disconnect();
   }
 
   private handleIncomingMessage(from: SessionInfo, message: Message): void {

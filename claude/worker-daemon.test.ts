@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { formatWorkerActivity, VirtualClaudeAgent, type WorkerActivity } from "./worker-daemon.ts";
+import type { IntercomClient } from "../broker/client.ts";
 import type { WorkerAgentConfig } from "./worker-config.ts";
 import type { Message, SessionInfo } from "../types.ts";
 
@@ -14,6 +16,29 @@ const from: SessionInfo = {
   startedAt: 1,
   lastActivity: 1,
 };
+class FakeIntercomClient extends EventEmitter {
+  connected = false;
+  connectCount = 0;
+  sessionId: string | null = null;
+
+  isConnected(): boolean { return this.connected; }
+  async connect(_registration: unknown, sessionId?: string): Promise<void> {
+    this.connected = true;
+    this.connectCount += 1;
+    this.sessionId = sessionId ?? "fake-session";
+  }
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.sessionId = null;
+  }
+  updatePresence(): void {}
+  drop(): void {
+    this.connected = false;
+    this.sessionId = null;
+    this.emit("disconnected", new Error("broker restarted"));
+  }
+}
+
 const message: Message = {
   id: "message-1",
   content: { text: "Please inspect the failure" },
@@ -43,6 +68,30 @@ test("attached worker displays the final result and resumable session", () => {
 test("attached worker displays wake failures", () => {
   const output = formatWorkerActivity({ type: "error", agent, from, message, error: "Claude exited 1" });
   assert.match(output, /Wake from Pi manager failed: Claude exited 1/);
+});
+
+test("persistent Claude worker reconnects its stable Intercom identity after broker restart", async () => {
+  const client = new FakeIntercomClient();
+  const worker = new VirtualClaudeAgent(
+    agent,
+    { agents: {} },
+    "/tmp/unused-worker-state.json",
+    "claude",
+    () => {},
+    async () => ({ sessionId: null, result: "unused", isError: false, raw: {} }),
+    {
+      client: client as unknown as IntercomClient,
+      prepareConnection: async () => {},
+      reconnectDelays: [1],
+    },
+  );
+
+  await worker.start();
+  client.drop();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(client.connectCount, 2);
+  assert.equal(client.sessionId, agent.id);
+  await worker.stop();
 });
 
 test("worker reports a real turn lifecycle and preserves blocking-ask replies", async () => {
