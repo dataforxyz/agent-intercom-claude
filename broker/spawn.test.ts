@@ -150,7 +150,7 @@ test("getBrokerSpawnOptions passes an absolute PI_CODING_AGENT_DIR to the broker
 test("isBrokerHealthOkMessage pins the remote policy semantic contract", () => {
   const compatible = {
     type: "health_ok", requestId: "req-1", protocol: "pi-intercom", version: 3,
-    remoteAccess: { feature: "remote-access-v1", policySemanticsVersion: 1, policySemanticsHash: "78178a5fd57c353342642968d3a27262ed02cb236927723675d875959413dce3" },
+    remoteAccess: { feature: "remote-access-v1", policySemanticsVersion: 2, policySemanticsHash: "f3b00e503631bc91123aedfbcf1df72cc9913e1893c09728b2c598f3dcdfdfe0" },
   };
   assert.equal(isBrokerHealthOkMessage(compatible, "req-1"), true);
   assert.equal(isBrokerHealthOkMessage({ ...compatible, remoteAccess: undefined }, "req-1"), false);
