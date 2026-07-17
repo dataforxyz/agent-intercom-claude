@@ -59,7 +59,14 @@ function pendingSelector(entries: PendingInboundMessage[], entry: PendingInbound
 
 function publicPendingEntry(entry: PendingInboundMessage, selector?: string): Record<string, unknown> {
   return {
-    from: { id: entry.from.id, name: entry.from.name },
+    from: {
+      id: entry.from.id,
+      name: entry.from.name,
+      origin: entry.from.origin ?? "local",
+      ...(entry.from.remoteHostId ? { remote_host_id: entry.from.remoteHostId } : {}),
+      ...(entry.from.parentSessionId ? { parent_session_id: entry.from.parentSessionId } : {}),
+      ...(entry.from.generation ? { generation: entry.from.generation } : {}),
+    },
     received_at: entry.receivedAt,
     read: entry.read,
     text: entry.message.content.text,
@@ -137,6 +144,11 @@ export function resolveSessionTarget(sessions: SessionInfo[], nameOrId: string):
   return null;
 }
 
+export function formatSessionDisplay(session: SessionInfo): string {
+  const name = session.name || session.id;
+  return session.origin === "remote" ? `${name} [remote:${session.remoteHostId || "unknown-host"}]` : name;
+}
+
 export function formatSessionList(sessions: SessionInfo[], currentSessionId: string | null, currentCwd: string): string {
   if (!sessions.length) return "No intercom sessions connected.";
   return sessions.map((session) => {
@@ -146,7 +158,7 @@ export function formatSessionList(sessions: SessionInfo[], currentSessionId: str
       session.status,
     ].filter((tag): tag is string => Boolean(tag));
     const suffix = tags.length ? ` [${tags.join(", ")}]` : "";
-    return `- ${session.name || "unnamed"} (${session.id.slice(0, 8)}) - ${session.cwd} (${session.model})${suffix}`;
+    return `- ${formatSessionDisplay(session)} (${session.id.slice(0, 8)}) - ${session.cwd} (${session.model})${suffix}`;
   }).join("\n");
 }
 
@@ -455,12 +467,12 @@ export class ClaudeIntercomRuntime {
     const pendingAsks = Array.from(this.unresolvedAsks.values()).sort((a, b) => a.receivedAt - b.receivedAt);
     const lines = [
       unreadMessages.length
-        ? unreadMessages.map((entry) => `- ${entry.from.name || entry.from.id}: ${entry.message.content.text}${formatAttachments(entry.message.content.attachments)}`).join("\n")
+        ? unreadMessages.map((entry) => `- ${formatSessionDisplay(entry.from)}: ${entry.message.content.text}${formatAttachments(entry.message.content.attachments)}`).join("\n")
         : "No unread messages.",
       pendingAsks.length
         ? `\nPending asks:\n${pendingAsks.map((entry) => {
           const selector = pendingSelector(pendingAsks, entry);
-          return `- ${entry.from.name || entry.from.id}${selector ? ` [${selector}]` : ""}: ${entry.message.content.text}`;
+          return `- ${formatSessionDisplay(entry.from)}${selector ? ` [${selector}]` : ""}: ${entry.message.content.text}`;
         }).join("\n")}`
         : "",
     ].filter(Boolean);

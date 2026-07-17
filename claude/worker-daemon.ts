@@ -14,7 +14,7 @@ import { IntercomClient } from "../broker/client.ts";
 import { spawnBrokerIfNeeded } from "../broker/spawn.ts";
 import { loadConfig } from "../config.ts";
 import type { Message, SessionInfo } from "../types.ts";
-import { formatAttachments } from "./runtime.ts";
+import { formatAttachments, formatSessionDisplay } from "./runtime.ts";
 import { copyTextToClipboard, formatContactInstruction } from "./contact.ts";
 
 const MAX_WAKES_PER_MINUTE = 20;
@@ -33,7 +33,7 @@ export interface VirtualClaudeAgentOptions {
 }
 
 export function formatWorkerActivity(activity: WorkerActivity): string {
-  const sender = activity.from.name || activity.from.id;
+  const sender = formatSessionDisplay(activity.from);
   if (activity.type === "started") {
     return `\n[intercom] Wake from ${sender}: ${activity.message.content.text}\n[intercom] Claude is working…\n`;
   }
@@ -62,7 +62,7 @@ function formatMessage(from: SessionInfo, message: Message, agent: WorkerAgentCo
   const custom = agent.instructions ? `\n\nAgent instructions:\n${agent.instructions}` : "";
   return [
     `Intercom message for ${agent.name}.`,
-    `From: ${from.name || from.id} (${from.id})`,
+    `From: ${formatSessionDisplay(from)} (${from.id})`,
     `Message id: ${message.id}`,
     "",
     message.content.text,

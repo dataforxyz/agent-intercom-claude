@@ -41,7 +41,7 @@
     "cci": "tsx claude/cci.ts",
     "ccim": "tsx claude/ccim.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test broker/client.test.ts broker/framing.test.ts broker/ownership.test.ts broker/paths.test.ts broker/spawn.test.ts outbound-outbox.test.ts claude/*.test.ts"
+    "test": "tsx --test broker/*.test.ts outbound-outbox.test.ts claude/*.test.ts"
   },
   "keywords": [
     "claude",
@@ -52,6 +52,9 @@
     "pi",
     "codex"
   ],
+  "dependencies": {
+    "@dataforxyz/agent-intercom-core": "git+https://github.com/dataforxyz/agent-intercom-core.git#cb5d2212912db0cd8abbb16ab08e4b539424a05d"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.1",
