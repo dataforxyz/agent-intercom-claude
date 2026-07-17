@@ -5,6 +5,7 @@ import {
   ClaudeIntercomRuntime,
   buildClaudeRuntimeIdentity,
   detectGitRoot,
+  formatSessionDisplay,
   formatSessionList,
   resolveSessionTarget,
   selectPendingAsk,
@@ -99,6 +100,12 @@ test("formatSessionList marks self and same cwd", () => {
 
   assert.match(output, /planner \(abc12345\)/);
   assert.match(output, /\[self, same cwd, idle\]/);
+});
+
+test("remote session provenance is visible in model-facing labels", () => {
+  const remote = session({ origin: "remote", remoteHostId: "ika-dev-v3" });
+  assert.equal(formatSessionDisplay(remote), "alpha [remote:ika-dev-v3]");
+  assert.match(formatSessionList([remote], null, "/other"), /alpha \[remote:ika-dev-v3\]/);
 });
 
 test("selectPendingAsk uses oldest/latest without exposing message IDs", () => {
