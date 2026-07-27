@@ -41,7 +41,10 @@ export interface Attachment {
 export type SessionRegistration = Omit<
   SessionInfo,
   "id" | "peerUid" | "trustedLocal" | "origin" | "remoteHostId" | "parentSessionId" | "rootSessionId" | "generation" | "canDelegate" | "depth" | "maxDepth" | "maxChildren"
->;
+> & {
+  /** Ephemeral identity shared only by reconnects from one live runtime. */
+  runtimeInstanceId?: string;
+};
 
 export interface RemoteEnrollmentAccess {
   enrollmentToken: string;
@@ -112,6 +115,7 @@ export type DeliveryFailureCode =
 export type BrokerErrorCode =
   | "PROTOCOL_MISMATCH"
   | "INVALID_REQUEST"
+  | "SESSION_ID_IN_USE"
   | "ACCESS_DENIED"
   | "REMOTE_ACCESS_INCOMPATIBLE"
   | "RATE_LIMITED"

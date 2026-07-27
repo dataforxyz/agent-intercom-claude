@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reject competing live runtimes that claim an active stable session ID while preserving legitimate reconnects and pending deliveries.
 - Add ID-free `oldest`/`latest` selection for multiple pending asks from one sender, hide protocol IDs from pending output, and refuse a second unresolved ask to the same recipient.
 - Automatically reconnect persistent workers and MCP runtimes with their stable Intercom identity after broker restarts.
 - Clarify that assignments and progress/status checkpoints use `intercom_send`, reserving `intercom_ask` for blocking decisions.
