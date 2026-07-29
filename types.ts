@@ -1,3 +1,36 @@
+import type {
+  BossControlEnvelope,
+  BossParticipantBinding,
+  BossParticipantCredentialEnvelope,
+  BossPrivatePrincipal,
+  BossRunFeatureContract,
+  BossWorkerIdentityV2,
+  BrokerCapabilityAdvertisement,
+  ParticipantState,
+} from "@dataforxyz/agent-intercom-core/boss";
+
+export interface BossLiveWorkerAuthority {
+  identity: BossWorkerIdentityV2;
+  state: ParticipantState;
+}
+
+export interface BossSessionMetadata {
+  binding: BossParticipantBinding;
+  principal: BossPrivatePrincipal;
+  /** Broker-authenticated live worker identity, independent of the worker registry projection. */
+  liveWorker: BossLiveWorkerAuthority;
+  featureContract: BossRunFeatureContract;
+  policySemanticsHash: string;
+  capabilityDigest: string;
+  brokerIdentityVerified: true;
+}
+
+export interface BossRegistrationRequest {
+  featureContract: BossRunFeatureContract;
+  capabilityDigest: string;
+  credential: BossParticipantCredentialEnvelope;
+}
+
 export interface SessionInfo {
   id: string;
   name?: string;
@@ -18,6 +51,8 @@ export interface SessionInfo {
   depth?: number;
   maxDepth?: number;
   maxChildren?: number;
+  /** Broker-authoritative metadata; absent for every ordinary/legacy session. */
+  boss?: BossSessionMetadata;
 }
 
 export interface Message {
@@ -25,6 +60,8 @@ export interface Message {
   timestamp: number;
   replyTo?: string;
   expectsReply?: boolean;
+  /** Internal typed control. Model-facing text tools cannot construct this. */
+  control?: BossControlEnvelope;
   content: {
     text: string;
     attachments?: Attachment[];
@@ -40,10 +77,12 @@ export interface Attachment {
 
 export type SessionRegistration = Omit<
   SessionInfo,
-  "id" | "peerUid" | "trustedLocal" | "origin" | "remoteHostId" | "parentSessionId" | "rootSessionId" | "generation" | "canDelegate" | "depth" | "maxDepth" | "maxChildren"
+  "id" | "peerUid" | "trustedLocal" | "origin" | "remoteHostId" | "parentSessionId" | "rootSessionId" | "generation" | "canDelegate" | "depth" | "maxDepth" | "maxChildren" | "boss"
 > & {
   /** Ephemeral identity shared only by reconnects from one live runtime. */
   runtimeInstanceId?: string;
+  /** Requested Boss enrollment. The dormant Stage-B broker rejects it closed. */
+  boss?: BossRegistrationRequest;
 };
 
 export interface RemoteEnrollmentAccess {
@@ -96,27 +135,32 @@ export interface RemoteAccessContract {
   policySemanticsHash: string;
 }
 
-export type DeliveryFailureCode =
-  | "INVALID_MESSAGE"
-  | "SESSION_NOT_FOUND"
-  | "AMBIGUOUS_TARGET"
-  | "SENDER_NOT_FOUND"
-  | "INVALID_REPLY_TARGET"
-  | "MUTUAL_ASK"
-  | "ASK_ALREADY_PENDING"
-  | "DUPLICATE_MESSAGE_ID"
-  | "CONFLICTING_MESSAGE_ID"
-  | "TOO_MANY_PENDING_DELIVERIES"
-  | "TOO_MANY_PENDING_ASKS"
-  | "RECIPIENT_DISCONNECTED"
-  | "SENDER_DISCONNECTED"
-  | "DELIVERY_TIMEOUT";
+export const DELIVERY_FAILURE_CODES = [
+  "INVALID_MESSAGE",
+  "SESSION_NOT_FOUND",
+  "AMBIGUOUS_TARGET",
+  "SENDER_NOT_FOUND",
+  "INVALID_REPLY_TARGET",
+  "MUTUAL_ASK",
+  "ASK_ALREADY_PENDING",
+  "DUPLICATE_MESSAGE_ID",
+  "CONFLICTING_MESSAGE_ID",
+  "TOO_MANY_PENDING_DELIVERIES",
+  "TOO_MANY_PENDING_ASKS",
+  "RECIPIENT_DISCONNECTED",
+  "SENDER_DISCONNECTED",
+  "DELIVERY_TIMEOUT",
+  "CONTROL_DISPATCH_UNAVAILABLE",
+] as const;
+
+export type DeliveryFailureCode = (typeof DELIVERY_FAILURE_CODES)[number];
 
 export type BrokerErrorCode =
   | "PROTOCOL_MISMATCH"
   | "INVALID_REQUEST"
   | "SESSION_ID_IN_USE"
   | "ACCESS_DENIED"
+  | "BOSS_FEATURE_UNAVAILABLE"
   | "REMOTE_ACCESS_INCOMPATIBLE"
   | "RATE_LIMITED"
   | "TOO_MANY_SESSIONS";
@@ -147,8 +191,8 @@ export type ClientMessage =
   | { type: "presence"; name?: string; status?: string; model?: string };
 
 export type BrokerMessage =
-  | { type: "health_ok"; requestId: string; protocol: string; version: number; endpoint: "local" | "remote"; remoteAccess?: RemoteAccessContract }
-  | { type: "registered"; sessionId: string; protocol: string; version: number; remoteAccess?: RemoteAccessContract; access?: RemoteAccessMetadata }
+  | { type: "health_ok"; requestId: string; protocol: string; version: number; endpoint: "local" | "remote"; remoteAccess?: RemoteAccessContract; capabilities?: BrokerCapabilityAdvertisement }
+  | { type: "registered"; sessionId: string; protocol: string; version: number; remoteAccess?: RemoteAccessContract; access?: RemoteAccessMetadata; capabilities?: BrokerCapabilityAdvertisement; boss?: BossSessionMetadata }
   | { type: "access_control_result"; requestId: string; action: "issue_enrollment"; enrollmentToken: string; expiresAt: number }
   | { type: "access_control_result"; requestId: string; action: "revoke_subtree"; changedPrincipalIds: string[] }
   | { type: "access_control_result"; requestId: string; action: "inspect_tree"; principals: RemotePrincipalSummary[] }

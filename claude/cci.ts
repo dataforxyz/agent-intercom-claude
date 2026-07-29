@@ -9,6 +9,11 @@ import { ClaudeWorkerDaemon } from "./worker-daemon.ts";
 import { defaultInboxPath } from "./inbox.ts";
 import { ensureIntercomRuntimeDir, getIntercomDirPath, restrictIntercomRuntimeFile } from "../broker/paths.ts";
 import { DEFAULT_WORKER_STATE_PATH, type WorkerAgentConfig, type WorkerConfig } from "./worker-config.ts";
+import {
+  resolveClaudePermissionPolicy,
+  validateClaudePermissionMode,
+  type ClaudePermissionMode,
+} from "./permission-policy.ts";
 
 export interface CciOptions {
   id?: string;
@@ -18,7 +23,7 @@ export interface CciOptions {
   model?: string;
   effort?: string;
   statePath?: string;
-  permissionMode?: string;
+  permissionMode?: ClaudePermissionMode;
   dangerouslySkipPermissions: boolean;
   addDirs: string[];
   mcpConfig?: string;
@@ -119,7 +124,7 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
         options.statePath = resolve(value ?? readValue(argv, index++, key));
         break;
       case "--permission-mode":
-        options.permissionMode = value ?? readValue(argv, index++, key);
+        options.permissionMode = validateClaudePermissionMode(value ?? readValue(argv, index++, key), "--permission-mode");
         break;
       case "--add-dir":
         options.addDirs.push(resolve(value ?? readValue(argv, index++, key)));
@@ -136,7 +141,7 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
         break;
       case "--safe":
         dangerouslySkipPermissions = false;
-        options.permissionMode = options.permissionMode ?? "default";
+        options.permissionMode = options.permissionMode ?? "manual";
         break;
       case "--minimal":
       case "--bare":
@@ -151,6 +156,11 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     }
   }
 
+  const permission = resolveClaudePermissionPolicy({
+    permissionMode: dangerouslySkipPermissions ? undefined : options.permissionMode,
+    dangerouslySkipPermissions: dangerouslySkipPermissions ?? false,
+  });
+
   return {
     cwd: resolve(options.cwd ?? env.CLAUDE_INTERCOM_CWD ?? process.cwd()),
     id: options.id ?? env.CLAUDE_INTERCOM_SESSION_ID,
@@ -159,8 +169,8 @@ export function parseCciArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     model: options.model ?? env.CLAUDE_INTERCOM_MODEL,
     effort: options.effort ?? env.CLAUDE_INTERCOM_EFFORT,
     statePath: options.statePath,
-    permissionMode: dangerouslySkipPermissions ? undefined : options.permissionMode,
-    dangerouslySkipPermissions: dangerouslySkipPermissions ?? true,
+    permissionMode: permission.permissionMode,
+    dangerouslySkipPermissions: permission.dangerouslySkipPermissions,
     addDirs: options.addDirs,
     mcpConfig: options.mcpConfig,
     minimal,
@@ -264,10 +274,11 @@ async function runCciTui(options: CciOptions, id: string, name: string): Promise
   rmSync(inboxPath, { force: true }); // fresh session: only surface messages that arrive from now on
 
   const args: string[] = ["--plugin-dir", root, "--append-system-prompt", buildTuiAppendSystemPrompt(name, id)];
+  const permission = resolveClaudePermissionPolicy(options);
   if (options.model) args.push("--model", options.model);
   if (options.effort) args.push("--effort", options.effort);
-  if (options.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
-  else if (options.permissionMode) args.push("--permission-mode", options.permissionMode);
+  if (permission.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
+  else if (permission.permissionMode) args.push("--permission-mode", permission.permissionMode);
   for (const dir of options.addDirs) args.push("--add-dir", dir);
 
   process.stderr.write(`cci --tui: live intercom session ${name} (${id})\n`);
@@ -335,7 +346,7 @@ export async function runCci(options: CciOptions): Promise<number> {
   process.stderr.write(`cci intercom worker: ${name} (${id})\n`);
   process.stderr.write(`Resume this worker's Claude session anytime with: claude --resume <session-id> (see ${statePath} once a turn has run)\n`);
   if (options.dangerouslySkipPermissions) {
-    process.stderr.write("Running with --dangerously-skip-permissions (yolo). Pass --safe to opt out.\n");
+    process.stderr.write("Running with explicitly requested --dangerously-skip-permissions (yolo).\n");
   }
   if (options.minimal) {
     process.stderr.write("Minimal mode: woken turns run with --safe-mode (no CLAUDE.md, skills, plugins, hooks, or MCP). Built-in tools and subagent delegation (Task tool) are retained.\n");

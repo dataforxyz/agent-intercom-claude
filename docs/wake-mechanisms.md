@@ -13,7 +13,7 @@ Code CLI:
 
 ```
 claude -p --output-format json --resume <session-id> \
-  --permission-mode bypassPermissions ...   # message text on stdin
+  --permission-mode manual ...   # message text on stdin
 ```
 
 - **Genuine system access.** The woken turn is a full Claude Code turn: Bash,
@@ -28,8 +28,9 @@ claude -p --output-format json --resume <session-id> \
 - **No experimental features.** Works on any Claude Code that supports `-p`.
 - **Trade-off.** It wakes a *fresh background worker*, not a session you are
   personally sitting in. Headless turns can't answer interactive permission
-  prompts, which is why the default posture is `--dangerously-skip-permissions`
-  (opt out with `--safe`).
+  prompts, but the adapter still defaults to standard checks. Choose a
+  validated explicit permission mode when needed; bypass is explicit-only and
+  forbidden for hardened read-only reviewer roles.
 
 ## Alternatives for waking a *live* session
 

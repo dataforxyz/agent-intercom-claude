@@ -7,6 +7,8 @@ import net from "net";
 import { randomUUID } from "crypto";
 import { POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@dataforxyz/agent-intercom-core";
 import { createMessageReader, writeMessage } from "./framing.ts";
+import { assertCompatibleOrdinaryAdvertisement } from "./boss-contracts.ts";
+import { hasExactDataKeys, isPlainDataRecord } from "./validation.ts";
 import {
   ensureIntercomRuntimeDir,
   getAgentDirPath,
@@ -102,10 +104,12 @@ export function getWindowsHiddenLauncherScript(commandLine: string): string {
 }
 
 export function isBrokerHealthOkMessage(message: unknown, requestId: string): boolean {
-  if (typeof message !== "object" || message === null || !("type" in message)) {
-    return false;
-  }
-  const response = message as Record<string, unknown>;
+  if (!hasExactDataKeys(
+    message,
+    ["type", "requestId", "protocol", "version", "endpoint", "remoteAccess"],
+    ["capabilities"],
+  )) return false;
+  const response = message;
   if (
     response.type !== "health_ok"
     || response.requestId !== requestId
@@ -114,11 +118,20 @@ export function isBrokerHealthOkMessage(message: unknown, requestId: string): bo
     || response.endpoint !== "local"
   ) return false;
   const remoteAccess = response.remoteAccess;
-  if (typeof remoteAccess !== "object" || remoteAccess === null || Array.isArray(remoteAccess)) return false;
-  const contract = remoteAccess as Record<string, unknown>;
-  return contract.feature === "remote-access-v1"
+  if (!hasExactDataKeys(remoteAccess, ["feature", "policySemanticsVersion", "policySemanticsHash"])) return false;
+  const contract = remoteAccess;
+  const legacyCompatible = contract.feature === "remote-access-v1"
     && contract.policySemanticsVersion === POLICY_SEMANTICS_VERSION
     && contract.policySemanticsHash === POLICY_SEMANTICS_HASH;
+  if (!legacyCompatible) return false;
+  if (response.capabilities !== undefined) {
+    try {
+      assertCompatibleOrdinaryAdvertisement(response.capabilities);
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
 function writeWindowsHiddenLauncher(
@@ -359,11 +372,8 @@ function checkBrokerHealth(): Promise<BrokerHealth> {
         return;
       }
       if (
-        typeof message === "object"
-        && message !== null
-        && "type" in message
+        isPlainDataRecord(message)
         && message.type === "health_ok"
-        && "requestId" in message
         && message.requestId === requestId
       ) {
         finish("incompatible");

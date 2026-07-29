@@ -1,6 +1,7 @@
 import type { ClaudeIntercomRuntime, ToolResult } from "./runtime.ts";
 import { validateAskTimeoutMs } from "../config.ts";
 import type { Attachment } from "../types.ts";
+import { hasExactDataKeys, isDenseArrayOf } from "../broker/validation.ts";
 
 interface JsonRpcRequest {
   jsonrpc?: string;
@@ -39,9 +40,13 @@ function asOptionalPositiveInteger(value: unknown, name: string): number | undef
 
 function asAttachmentArray(value: unknown): Attachment[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw new Error("attachments must be an array");
+  if (!isDenseArrayOf<unknown>(value, (_entry): _entry is unknown => true)) {
+    throw new Error("attachments must be an exact dense array");
+  }
   return value.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`attachments[${index}] must be an object`);
+    if (!hasExactDataKeys(item, ["type", "name", "content"], ["language"])) {
+      throw new Error(`attachments[${index}] must be an exact object`);
+    }
     const raw = item as Record<string, unknown>;
     const type = raw.type;
     if (type !== "file" && type !== "snippet" && type !== "context") throw new Error(`attachments[${index}].type must be file, snippet, or context`);
@@ -68,7 +73,7 @@ const attachmentsSchema = {
 };
 
 export function buildToolDefinitions(runtime: ClaudeIntercomRuntime): ToolDefinition[] {
-  return [
+  const tools: ToolDefinition[] = [
     {
       name: "intercom_whoami",
       description: "Return this Claude session's intercom identity for reliable targeting.",
@@ -177,6 +182,7 @@ export function buildToolDefinitions(runtime: ClaudeIntercomRuntime): ToolDefini
       handler: async (args) => runtime.reply(asString(args.message, "message"), typeof args.to === "string" ? args.to : undefined, args.which === "oldest" || args.which === "latest" ? args.which : undefined),
     },
   ];
+  return tools;
 }
 
 function ok(id: JsonRpcRequest["id"], result: unknown) {

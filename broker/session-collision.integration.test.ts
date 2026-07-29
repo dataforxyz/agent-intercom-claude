@@ -9,6 +9,7 @@ import test from "node:test";
 import { createMessageReader, writeMessage } from "./framing.ts";
 
 const repoDir = resolve(import.meta.dirname, "..");
+const brokerEntry = process.env.CLAUDE_INTERCOM_TEST_BROKER_ENTRY || join(repoDir, "broker", "broker.ts");
 
 class RawPeer {
   readonly messages: any[] = [];
@@ -123,7 +124,8 @@ async function stopBroker(broker: ChildProcessWithoutNullStreams): Promise<void>
 test("stable local session IDs reject competing runtimes without disturbing the incumbent", { concurrency: false }, async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "agent-intercom-session-collision-"));
   const socketPath = join(agentDir, "intercom", "broker.sock");
-  const broker = spawn(process.execPath, ["--import", "tsx", join(repoDir, "broker", "broker.ts")], {
+  const brokerArgs = brokerEntry.endsWith(".ts") ? ["--import", "tsx", brokerEntry] : [brokerEntry];
+  const broker = spawn(process.execPath, brokerArgs, {
     cwd: repoDir,
     env: { ...process.env, HOME: agentDir, USERPROFILE: agentDir, PI_CODING_AGENT_DIR: agentDir },
     stdio: ["pipe", "pipe", "pipe"],
@@ -143,6 +145,23 @@ test("stable local session IDs reject competing runtimes without disturbing the 
       runtimeInstanceId: "sender-runtime",
     })).type, "registered");
 
+    for (const folded of ["Boss", "BOSS", "bossRunId"]) {
+      const hostile = await connect(socketPath);
+      peers.push(hostile);
+      hostile.send({
+        ...registration({ id: `folded-${folded}`, name: "folded", pid: 91, startedAt: 901 }),
+        [folded]: {},
+      });
+      const response = await hostile.waitFor((message) => message.type === "error");
+      assert.equal(response.code, "INVALID_REQUEST", folded);
+    }
+
+    const foldedSession = await connect(socketPath);
+    peers.push(foldedSession);
+    const foldedRegistration = registration({ id: "folded-session", name: "folded", pid: 92, startedAt: 902 });
+    foldedSession.send({ ...foldedRegistration, session: { ...foldedRegistration.session, Boss: {} } });
+    assert.equal((await foldedSession.waitFor((message) => message.type === "error")).code, "INVALID_REQUEST");
+
     const owner = await connect(socketPath);
     peers.push(owner);
     assert.equal((await register(owner, {
@@ -152,6 +171,35 @@ test("stable local session IDs reject competing runtimes without disturbing the 
       startedAt: 101,
       runtimeInstanceId: "owner-runtime",
     })).type, "registered");
+
+    sender.send({
+      type: "send",
+      to: "contested-id",
+      message: {
+        id: "typed-unavailable",
+        timestamp: Date.now(),
+        control: {
+          type: "boss.worker.health",
+          version: 1,
+          messageId: "typed-unavailable",
+          bossRunId: "boss-run-a",
+          participantId: "participant-a",
+          bindingEpoch: 1,
+          idempotencyKey: "health-a",
+          payload: {},
+        },
+        content: { text: "" },
+      },
+    });
+    const unavailable = await sender.waitFor((message) => message.type === "delivery_failed" && message.messageId === "typed-unavailable");
+    assert.deepEqual(unavailable, {
+      type: "delivery_failed",
+      messageId: "typed-unavailable",
+      accepted: false,
+      code: "CONTROL_DISPATCH_UNAVAILABLE",
+      reason: "Typed Boss control dispatch is unavailable without authoritative correlation and durable dispatch",
+    });
+    assert.equal(sender.messages.some((message) => message.type === "delivery_accepted" && message.messageId === "typed-unavailable"), false);
 
     sender.send({
       type: "send",

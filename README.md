@@ -241,8 +241,9 @@ Flags (all optional; `ccim` accepts the same set):
 | `--instructions <text>` | System-prompt guidance appended to every woken turn |
 | `--tui` / `--live` | Run as a LIVE interactive Claude session woken in place (see below) instead of a headless `claude -p` worker |
 | `--minimal` / `--bare` | Run woken turns with `--safe-mode` (see below); implied by `ccim` (ignored with `--tui`) |
-| `--safe` | Use standard permission prompts instead of the yolo default |
-| `--permission-mode <mode>` | Explicit permission mode (`acceptEdits`, `plan`, …) |
+| `--safe` | Compatibility alias for the safe `manual` permission mode |
+| `--yolo` / `--dangerously-skip-permissions` | Explicitly bypass permission checks (never the default) |
+| `--permission-mode <mode>` | Validated against Claude Code 2.1.220 (`acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, or `plan`) |
 | `--add-dir <dir>` | Extra directory the worker may access (repeatable) |
 | `--mcp-config <json\|file>` | Extra MCP servers for woken turns (e.g. to give the worker intercom tools) |
 | `--state <path>` | Where to persist the worker's session id (default under `~/.pi/agent/intercom/`) |
@@ -251,16 +252,15 @@ Flags (all optional; `ccim` accepts the same set):
 ```bash
 cci --cwd /path/to/project --instructions "Reply tersely. Ask before destructive changes."
 cci --model opus --effort max --name reviewer --id reviewer
-cci --safe --name safe-worker --id safe-worker      # standard permission prompts instead of yolo
+cci --yolo --name trusted-worker --id trusted-worker # explicit opt-in only
 cci --add-dir ../shared-lib --name worker-a --id worker-a
 ```
 
-By default `cci` runs the woken turns with
-`--dangerously-skip-permissions` so the worker can actually act on the system in
-headless mode (headless turns cannot answer interactive permission prompts). Use
-`--safe` to switch to the standard permission mode, or `--permission-mode
-<mode>` to choose one explicitly. Only run yolo workers on a machine account you
-trust.
+By default `cci` passes the standard `--permission-mode manual`; it never adds
+`--dangerously-skip-permissions` on the user's behalf. Headless turns cannot
+answer an interactive permission prompt, so choose a validated explicit mode
+when a different non-interactive posture is required. `--yolo` remains an
+explicit trusted-user opt-in outside hardened roles.
 
 ## Live TUI Mode (`cci --tui`)
 
@@ -374,11 +374,19 @@ Create a config:
       "cwd": "/path/to/project",
       "model": "sonnet",
       "instructions": "Reply concisely. Ask before making destructive changes.",
-      "permissionMode": "bypassPermissions"
+      "permissionMode": "manual"
     }
   ]
 }
 ```
+
+Worker configuration validates permission modes and rejects permission flags
+hidden in `claudeArgs`. A tightening-only `bossRole` hint of `adversary` or
+`council` forces `--bare`, `permissionMode: "plan"`, and a `read-only` ceiling;
+permission-granting settings, agents, plugins, and appended argv cannot widen
+it. This local hint does not enroll a Boss participant or expose a reviewer
+tool; those surfaces stay unavailable until a protected Controller supplies the
+binding, transport, and durable dispatch path.
 
 Start it:
 

@@ -26,5 +26,7 @@ jobs:
             npm install --ignore-scripts
           fi
       - run: npm run typecheck
+      - run: npm run verify:core
       - run: npm test
       - run: npm run build --if-present
+      - run: npm run verify:pack

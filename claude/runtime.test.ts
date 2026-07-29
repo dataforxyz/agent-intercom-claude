@@ -17,6 +17,7 @@ import type { SessionInfo } from "../types.ts";
 class FakeIntercomClient extends EventEmitter {
   connected = false;
   connectCount = 0;
+  acknowledgements: string[] = [];
   sessionId: string | null = null;
 
   isConnected(): boolean { return this.connected; }
@@ -29,7 +30,7 @@ class FakeIntercomClient extends EventEmitter {
     this.connected = false;
     this.sessionId = null;
   }
-  acknowledgeMessage(): void {}
+  acknowledgeMessage(deliveryId: string): void { this.acknowledgements.push(deliveryId); }
   drop(): void {
     this.connected = false;
     this.sessionId = null;

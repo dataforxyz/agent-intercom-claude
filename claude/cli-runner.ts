@@ -1,4 +1,11 @@
 import { spawn } from "node:child_process";
+import {
+  assertNoPermissionOverrides,
+  bindHardenedClaudePaths,
+  resolveClaudePermissionPolicy,
+  type ClaudePermissionCeiling,
+  type ClaudePermissionMode,
+} from "./permission-policy.ts";
 
 export interface ClaudeTurnOptions {
   prompt: string;
@@ -6,8 +13,9 @@ export interface ClaudeTurnOptions {
   sessionId?: string;
   model?: string;
   appendSystemPrompt?: string;
-  permissionMode?: string;
+  permissionMode?: ClaudePermissionMode;
   dangerouslySkipPermissions?: boolean;
+  permissionCeiling?: ClaudePermissionCeiling;
   addDirs?: string[];
   mcpConfig?: string;
   claudeCommand?: string;
@@ -24,8 +32,37 @@ export interface ClaudeTurnResult {
   raw: unknown;
 }
 
-export function buildClaudeArgs(options: ClaudeTurnOptions): string[] {
+interface PreparedClaudeLaunch {
+  args: string[];
+  cwd: string;
+  release(): void;
+}
+
+function prepareClaudeLaunch(options: ClaudeTurnOptions): PreparedClaudeLaunch {
   const args: string[] = ["-p", "--output-format", "json"];
+  const permission = resolveClaudePermissionPolicy({
+    permissionMode: options.permissionMode,
+    dangerouslySkipPermissions: options.dangerouslySkipPermissions,
+    ceiling: options.permissionCeiling,
+  });
+  assertNoPermissionOverrides(options.extraArgs ?? [], "extraArgs", permission.ceiling);
+
+  let cwd = options.cwd;
+  let addDirs = options.addDirs ?? [];
+  let release = () => {};
+  if (permission.ceiling === "read-only") {
+    if (options.mcpConfig !== undefined) {
+      throw new Error("mcpConfig cannot add an arbitrary MCP capability to a hardened Claude role");
+    }
+    const binding = bindHardenedClaudePaths(options.cwd, addDirs);
+    cwd = binding.cwd;
+    addDirs = binding.addDirs;
+    release = binding.release;
+    // --bare prevents ambient project/user customizations and hooks from
+    // widening a hardened launch. Explicit broker-owned inputs are appended
+    // below after the permission boundary has been fixed.
+    args.push("--bare");
+  }
 
   if (options.sessionId) {
     args.push("--resume", options.sessionId);
@@ -36,12 +73,14 @@ export function buildClaudeArgs(options: ClaudeTurnOptions): string[] {
   if (options.appendSystemPrompt) {
     args.push("--append-system-prompt", options.appendSystemPrompt);
   }
-  if (options.dangerouslySkipPermissions) {
+  if (permission.dangerouslySkipPermissions) {
     args.push("--dangerously-skip-permissions");
-  } else if (options.permissionMode) {
-    args.push("--permission-mode", options.permissionMode);
+  } else if (permission.permissionMode && (
+    permission.ceiling === "read-only" || options.permissionMode !== undefined
+  )) {
+    args.push("--permission-mode", permission.permissionMode);
   }
-  for (const dir of options.addDirs ?? []) {
+  for (const dir of addDirs) {
     args.push("--add-dir", dir);
   }
   if (options.mcpConfig) {
@@ -51,7 +90,16 @@ export function buildClaudeArgs(options: ClaudeTurnOptions): string[] {
     args.push(...options.extraArgs);
   }
 
-  return args;
+  return { args, cwd, release };
+}
+
+export function buildClaudeArgs(options: ClaudeTurnOptions): string[] {
+  const launch = prepareClaudeLaunch(options);
+  try {
+    return launch.args;
+  } finally {
+    launch.release();
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,12 +109,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function runClaudeTurn(options: ClaudeTurnOptions): Promise<ClaudeTurnResult> {
   return new Promise((resolve, reject) => {
     const command = options.claudeCommand ?? "claude";
-    const args = buildClaudeArgs(options);
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      env: { ...process.env, ...options.env },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const launch = prepareClaudeLaunch(options);
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, launch.args, {
+        cwd: launch.cwd,
+        env: { ...process.env, ...options.env },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } finally {
+      // Directory descriptors remain open across the synchronous spawn setup,
+      // narrowing replacement races without leaking them for the turn.
+      launch.release();
+    }
 
     let stdout = "";
     let stderr = "";

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { formatWorkerActivity, VirtualClaudeAgent, type WorkerActivity } from "./worker-daemon.ts";
+import type { ClaudeTurnOptions } from "./cli-runner.ts";
 import type { IntercomClient } from "../broker/client.ts";
 import type { WorkerAgentConfig } from "./worker-config.ts";
 import type { Message, SessionInfo } from "../types.ts";
@@ -147,4 +148,35 @@ test("worker visibly reports Claude result errors without changing the ask reply
   assert.deepEqual(activities.map((activity) => activity.type), ["started", "error"]);
   assert.equal(activities[1]?.type === "error" && activities[1].error, "Not logged in");
   assert.deepEqual(sends, [{ text: "Not logged in", replyTo: message.id }]);
+});
+
+test("legacy omitted worker permissions still launch noninteractively while explicit manual stays safe", async () => {
+  for (const scenario of [
+    { configured: agent, expectedMode: "bypassPermissions" },
+    {
+      configured: { ...agent, permissionMode: "manual" as const, dangerouslySkipPermissions: false },
+      expectedMode: "manual",
+    },
+  ]) {
+    let launched: ClaudeTurnOptions | undefined;
+    const worker = new VirtualClaudeAgent(
+      scenario.configured,
+      { agents: {} },
+      "/tmp/unused-worker-state.json",
+      "claude",
+      () => {},
+      async (options) => {
+        launched = options;
+        return { sessionId: null, result: "ok", isError: false, raw: {} };
+      },
+    );
+    (worker as any).client = {
+      updatePresence() {},
+      async send() { return { delivered: true }; },
+    };
+
+    await (worker as any).handleMessage(from, message);
+    assert.equal(launched?.permissionMode, scenario.expectedMode);
+    assert.equal(launched?.dangerouslySkipPermissions, scenario.configured.dangerouslySkipPermissions);
+  }
 });

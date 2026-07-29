@@ -1,0 +1,31 @@
+{
+  "source": {
+    "package": "@anthropic-ai/claude-code",
+    "version": "2.1.220",
+    "binarySha256": "674f61f20ff306f3100cf9200e4c36c4b70278b5bef2884549819b942a89c863",
+    "elfBuildId": "788318c9115981678ca1a25f40cdb3b39df71403",
+    "method": "Static GNU strings inspection of the installed ELF option declarations; the executable was not invoked"
+  },
+  "rootCreatingOptionDeclarations": [
+    {
+      "declaration": "-w, --worktree [name]",
+      "description": "Create a new git worktree for this session (optionally specify a name)",
+      "effects": ["creates-root", "changes-cwd"]
+    }
+  ],
+  "options": [
+    { "long": "--add-dir", "aliases": [], "effects": ["adds-root"] },
+    { "long": "--agent", "aliases": [], "effects": ["loads-agent"] },
+    { "long": "--agents", "aliases": [], "effects": ["loads-agent"] },
+    { "long": "--allowed-tools", "aliases": [], "effects": ["grants-tools"] },
+    { "long": "--allowedTools", "aliases": [], "effects": ["grants-tools"] },
+    { "long": "--mcp-config", "aliases": [], "effects": ["loads-mcp"] },
+    { "long": "--plugin-dir", "aliases": [], "effects": ["loads-plugin"] },
+    { "long": "--plugin-dir-no-mcp", "aliases": [], "effects": ["loads-plugin"] },
+    { "long": "--plugin-url", "aliases": [], "effects": ["loads-plugin"] },
+    { "long": "--setting-sources", "aliases": [], "effects": ["loads-settings"] },
+    { "long": "--settings", "aliases": [], "effects": ["loads-settings"] },
+    { "long": "--tools", "aliases": [], "effects": ["grants-tools"] },
+    { "long": "--worktree", "aliases": ["-w"], "effects": ["creates-root", "changes-cwd"] }
+  ]
+}

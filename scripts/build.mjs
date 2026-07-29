@@ -3,12 +3,20 @@ import { build } from "esbuild";
 
 const common = {
   bundle: true,
+  metafile: true,
   platform: "node",
   format: "esm",
   target: "node20",
+  // Core is a runtime peer. Keep both its root entry point and every exported
+  // subpath as imports so all adapter bundles share the consumer's one Core
+  // module instance instead of embedding private copies.
+  external: [
+    "@dataforxyz/agent-intercom-core",
+    "@dataforxyz/agent-intercom-core/*",
+  ],
 };
 
-await Promise.all([
+const buildResults = await Promise.all([
   build({
     ...common,
     entryPoints: ["claude/server.ts"],
@@ -45,6 +53,14 @@ await Promise.all([
     banner: { js: "#!/usr/bin/env node" },
   }),
 ]);
+
+for (const result of buildResults) {
+  for (const input of Object.keys(result.metafile.inputs)) {
+    if (input.includes("node_modules/@dataforxyz/agent-intercom-core/")) {
+      throw new Error(`Core runtime was embedded in an adapter bundle through ${input}`);
+    }
+  }
+}
 
 await Promise.all([
   chmod("dist/claude-server.mjs", 0o755),

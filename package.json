@@ -15,7 +15,9 @@
     "assets/**/*",
     "dist/**/*",
     "claude/**/*.ts",
+    "!claude/**/*.test.ts",
     "broker/**/*.ts",
+    "!broker/**/*.test.ts",
     "scripts/**/*",
     "skills/**/*",
     "commands/**/*",
@@ -36,12 +38,15 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "prepare": "npm run build",
+    "pretest": "npm run build",
     "claude:mcp": "tsx claude/server.ts",
     "claude:worker": "tsx claude/worker-daemon.ts",
     "cci": "tsx claude/cci.ts",
     "ccim": "tsx claude/ccim.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test broker/*.test.ts outbound-outbox.test.ts claude/*.test.ts"
+    "test": "node --import tsx --test broker/*.test.ts outbound-outbox.test.ts claude/*.test.ts test/*.test.ts",
+    "verify:core": "node scripts/verify-core-provenance.mjs",
+    "verify:pack": "node scripts/verify-packed-runtime.mjs"
   },
   "keywords": [
     "claude",
@@ -52,10 +57,11 @@
     "pi",
     "codex"
   ],
-  "dependencies": {
-    "@dataforxyz/agent-intercom-core": "git+https://github.com/dataforxyz/agent-intercom-core.git#cb5d2212912db0cd8abbb16ab08e4b539424a05d"
+  "peerDependencies": {
+    "@dataforxyz/agent-intercom-core": "0.1.0"
   },
   "devDependencies": {
+    "@dataforxyz/agent-intercom-core": "git+https://github.com/dataforxyz/agent-intercom-core.git#8316cbab548f422ad11c78ed887fabeef94817c1",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.20.0",
@@ -63,6 +69,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   },
   "repository": {
     "type": "git",

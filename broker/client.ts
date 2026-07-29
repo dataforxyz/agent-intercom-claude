@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import net from "net";
 import { randomUUID } from "crypto";
 import { POLICY_SEMANTICS_HASH, POLICY_SEMANTICS_VERSION } from "@dataforxyz/agent-intercom-core";
+import type { BossControlEnvelope } from "@dataforxyz/agent-intercom-core/boss";
 import { writeMessage, createMessageReader } from "./framing.ts";
 import { PersistentOutboundOutbox } from "../outbound-outbox.ts";
 import { loadRemoteAccessCredential, writeRemoteSessionCredential, type LoadedRemoteAccessCredential } from "./access-credential.ts";
@@ -13,12 +14,24 @@ import {
 } from "./paths.ts";
 import type {
   AskCancellationReason,
+  BossRegistrationRequest,
+  BossSessionMetadata,
   DeliveryFailureCode,
   SessionInfo,
   Message,
   Attachment,
   SessionRegistration,
 } from "../types.ts";
+import { DELIVERY_FAILURE_CODES } from "../types.ts";
+import {
+  assertBossRegistrationEcho,
+  assertCompatibleBossAdvertisement,
+  assertCompatibleOrdinaryAdvertisement,
+  parseBossRegistrationRequest,
+  parseBossSessionMetadata,
+  parseCorrelatedBossControl,
+} from "./boss-contracts.ts";
+import { hasExactDataKeys, isDenseArrayOf, isPlainDataRecord } from "./validation.ts";
 
 export interface SendOptions {
   text: string;
@@ -37,6 +50,10 @@ export interface SendResult {
   reason?: string;
 }
 
+interface InternalSendOptions extends SendOptions {
+  control?: BossControlEnvelope;
+}
+
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -48,7 +65,7 @@ function connectToBrokerTarget(target: BrokerConnectTarget): net.Socket {
 }
 
 function isAttachment(value: unknown): value is Attachment {
-  if (typeof value !== "object" || value === null) {
+  if (!hasExactDataKeys(value, ["type", "name", "content"], ["language"])) {
     return false;
   }
 
@@ -70,7 +87,7 @@ function isAttachment(value: unknown): value is Attachment {
 }
 
 function isMessage(value: unknown): value is Message {
-  if (typeof value !== "object" || value === null) {
+  if (!hasExactDataKeys(value, ["id", "timestamp", "content"], ["replyTo", "expectsReply", "control"])) {
     return false;
   }
 
@@ -88,7 +105,16 @@ function isMessage(value: unknown): value is Message {
     return false;
   }
 
-  if (typeof message.content !== "object" || message.content === null) {
+  if (message.control !== undefined) {
+    try {
+      parseCorrelatedBossControl(message.control, message.id);
+    } catch {
+      return false;
+    }
+    if (message.replyTo !== undefined || message.expectsReply !== undefined) return false;
+  }
+
+  if (!hasExactDataKeys(message.content, ["text"], ["attachments"])) {
     return false;
   }
 
@@ -97,12 +123,22 @@ function isMessage(value: unknown): value is Message {
     return false;
   }
 
+  if (message.control !== undefined && (content.text !== "" || content.attachments !== undefined)) return false;
+
   return content.attachments === undefined
-    || (Array.isArray(content.attachments) && content.attachments.every(isAttachment));
+    || isDenseArrayOf(content.attachments, isAttachment);
 }
 
 function isSessionInfo(value: unknown): value is SessionInfo {
-  if (typeof value !== "object" || value === null) {
+  if (!hasExactDataKeys(
+    value,
+    ["id", "cwd", "model", "pid", "startedAt", "lastActivity"],
+    [
+      "name", "status", "peerUid", "trustedLocal", "origin", "remoteHostId",
+      "parentSessionId", "rootSessionId", "generation", "canDelegate", "depth",
+      "maxDepth", "maxChildren", "boss",
+    ],
+  )) {
     return false;
   }
 
@@ -141,11 +177,22 @@ function isSessionInfo(value: unknown): value is SessionInfo {
   for (const field of ["depth", "maxDepth", "maxChildren"] as const) {
     if (session[field] !== undefined && (typeof session[field] !== "number" || !Number.isSafeInteger(session[field]))) return false;
   }
+  if (session.boss !== undefined) {
+    try {
+      parseBossSessionMetadata(session.boss, session.id);
+    } catch {
+      return false;
+    }
+  }
   return true;
 }
 
 function isRemoteAccessMetadata(value: unknown): value is import("../types.ts").RemoteAccessMetadata {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (!hasExactDataKeys(
+    value,
+    ["origin", "remoteHostId", "parentSessionId", "rootSessionId", "generation", "canDelegate", "depth", "maxDepth", "maxChildren"],
+    ["sessionCredential"],
+  )) return false;
   const access = value as Record<string, unknown>;
   return access.origin === "remote"
     && typeof access.remoteHostId === "string"
@@ -164,6 +211,10 @@ function isRemoteAccessMetadata(value: unknown): value is import("../types.ts").
     && (access.sessionCredential === undefined || typeof access.sessionCredential === "string");
 }
 
+function isDeliveryFailureCode(value: unknown): value is DeliveryFailureCode {
+  return typeof value === "string" && (DELIVERY_FAILURE_CODES as readonly string[]).includes(value);
+}
+
 export class IntercomClient extends EventEmitter {
   private socket: net.Socket | null = null;
   private _sessionId: string | null = null;
@@ -173,10 +224,13 @@ export class IntercomClient extends EventEmitter {
     resolve: (r: SendResult) => void;
     reject: (e: Error) => void;
   }>();
+  private lateDeliveryAcceptances = new Map<string, string>();
   private pendingLists = new Map<string, { resolve: (sessions: SessionInfo[]) => void; reject: (e: Error) => void }>();
   private pendingAskControls = new Map<string, { resolve: (applied: boolean) => void; timeout: NodeJS.Timeout }>();
   private outbox: PersistentOutboundOutbox | null = null;
   private remoteAccessCredential: LoadedRemoteAccessCredential | undefined;
+  private requestedBossRegistration: BossRegistrationRequest | undefined;
+  private bossSessionMetadata: BossSessionMetadata | undefined;
   private disconnecting = false;
   private disconnectError: Error | null = null;
 
@@ -194,6 +248,11 @@ export class IntercomClient extends EventEmitter {
       pending.resolve(false);
     }
     this.pendingAskControls.clear();
+    this.lateDeliveryAcceptances.clear();
+  }
+
+  private hasQueuedOutboundMessage(messageId: string): boolean {
+    return this.outbox?.list().some((entry) => entry.message.id === messageId) ?? false;
   }
 
   get sessionId(): string | null {
@@ -235,10 +294,14 @@ export class IntercomClient extends EventEmitter {
       let socket: net.Socket;
       let target: BrokerConnectTarget;
       try {
+        this.requestedBossRegistration = session.boss === undefined
+          ? undefined
+          : parseBossRegistrationRequest(session.boss);
         target = getBrokerConnectTarget();
         this.remoteAccessCredential = loadRemoteAccessCredential();
         socket = connectToBrokerTarget(target);
       } catch (error) {
+        this.requestedBossRegistration = undefined;
         reject(toError(error));
         return;
       }
@@ -252,6 +315,7 @@ export class IntercomClient extends EventEmitter {
           if (this.socket === socket) {
             this.socket = null;
           }
+          this.requestedBossRegistration = undefined;
           socket.destroy();
           reject(new Error("Connection timeout"));
         }
@@ -273,6 +337,7 @@ export class IntercomClient extends EventEmitter {
         if (this.socket === socket) {
           this.socket = null;
         }
+        this.requestedBossRegistration = undefined;
         socket.destroy();
         reject(err);
       };
@@ -289,6 +354,8 @@ export class IntercomClient extends EventEmitter {
           this.socket = null;
         }
         this._sessionId = null;
+        this.requestedBossRegistration = undefined;
+        this.bossSessionMetadata = undefined;
         this.disconnectError = null;
         if (connectionEstablished && !wasDisconnecting) {
           this.emit("disconnected", disconnectError);
@@ -355,6 +422,7 @@ export class IntercomClient extends EventEmitter {
         if (this.socket === socket) {
           this.socket = null;
         }
+        this.requestedBossRegistration = undefined;
         socket.destroy();
         reject(toError(error));
       }
@@ -362,7 +430,7 @@ export class IntercomClient extends EventEmitter {
   }
 
   private handleBrokerMessage(msg: unknown): void {
-    if (typeof msg !== "object" || msg === null || !("type" in msg) || typeof msg.type !== "string") {
+    if (!isPlainDataRecord(msg) || typeof msg.type !== "string") {
       throw new Error("Invalid broker message");
     }
 
@@ -374,8 +442,22 @@ export class IntercomClient extends EventEmitter {
 
     switch (brokerMessage.type) {
       case "registered": {
+        const baseKeys = ["type", "sessionId", "protocol", "version"];
         if (
-          typeof brokerMessage.sessionId !== "string"
+          this.requestedBossRegistration !== undefined
+          && (brokerMessage.capabilities === undefined || brokerMessage.boss === undefined)
+        ) {
+          throw new Error("Boss registration was downgraded to an ordinary session");
+        }
+        const exactKeys = this.requestedBossRegistration !== undefined
+          ? [...baseKeys, "capabilities", "boss"]
+          : this.remoteAccessCredential
+            ? [...baseKeys, "remoteAccess", "access"]
+            : baseKeys;
+        const optionalKeys = this.requestedBossRegistration === undefined ? ["capabilities"] : [];
+        if (
+          !hasExactDataKeys(brokerMessage, exactKeys, optionalKeys)
+          || typeof brokerMessage.sessionId !== "string"
           || brokerMessage.protocol !== INTERCOM_PROTOCOL_NAME
           || brokerMessage.version !== INTERCOM_PROTOCOL_VERSION
         ) {
@@ -386,11 +468,30 @@ export class IntercomClient extends EventEmitter {
           throw new Error("Received duplicate registered message");
         }
 
+        if (this.requestedBossRegistration !== undefined) {
+          assertCompatibleBossAdvertisement(brokerMessage.capabilities);
+          this.bossSessionMetadata = assertBossRegistrationEcho(
+            this.requestedBossRegistration,
+            brokerMessage.boss,
+            brokerMessage.sessionId,
+          );
+          this.requestedBossRegistration = undefined;
+        } else {
+          if (brokerMessage.boss !== undefined) {
+            throw new Error("Ordinary registration received unsolicited Boss authority metadata");
+          }
+          if (brokerMessage.capabilities !== undefined) {
+            assertCompatibleOrdinaryAdvertisement(brokerMessage.capabilities);
+          }
+          this.bossSessionMetadata = undefined;
+        }
+
         if (this.remoteAccessCredential) {
           const contract = brokerMessage.remoteAccess;
-          const contractFields = typeof contract === "object" && contract !== null
-            ? contract as Record<string, unknown>
-            : undefined;
+          const contractFields = hasExactDataKeys(
+            contract,
+            ["feature", "policySemanticsVersion", "policySemanticsHash"],
+          ) ? contract : undefined;
           if (
             !contractFields
             || contractFields.feature !== "remote-access-v1"
@@ -406,7 +507,11 @@ export class IntercomClient extends EventEmitter {
             writeRemoteSessionCredential(this.remoteAccessCredential.path, brokerMessage.sessionId, brokerMessage.access);
           } else {
             const reconnect = this.remoteAccessCredential.access;
-            if (!("sessionId" in reconnect) || reconnect.sessionId !== brokerMessage.sessionId || reconnect.generation !== brokerMessage.access.generation) {
+            if (
+              !isPlainDataRecord(reconnect)
+              || reconnect.sessionId !== brokerMessage.sessionId
+              || reconnect.generation !== brokerMessage.access.generation
+            ) {
               throw new Error("Remote Intercom reconnect identity or generation changed unexpectedly");
             }
           }
@@ -414,6 +519,7 @@ export class IntercomClient extends EventEmitter {
 
         this._sessionId = brokerMessage.sessionId;
         this.outbox = new PersistentOutboundOutbox(brokerMessage.sessionId);
+        this.lateDeliveryAcceptances.clear();
         this.replayOutbox();
         this.emit("_registered", { type: "registered", sessionId: brokerMessage.sessionId });
         break;
@@ -421,7 +527,11 @@ export class IntercomClient extends EventEmitter {
 
       case "sessions": {
         const { requestId, sessions } = brokerMessage;
-        if (typeof requestId !== "string" || !Array.isArray(sessions) || !sessions.every(isSessionInfo)) {
+        if (
+          !hasExactDataKeys(brokerMessage, ["type", "requestId", "sessions"])
+          || typeof requestId !== "string"
+          || !isDenseArrayOf(sessions, isSessionInfo)
+        ) {
           throw new Error("Invalid sessions message");
         }
 
@@ -438,75 +548,140 @@ export class IntercomClient extends EventEmitter {
 
       case "message": {
         const { deliveryId, from, message } = brokerMessage;
-        if (typeof deliveryId !== "string" || !isSessionInfo(from) || !isMessage(message)) {
+        if (
+          !hasExactDataKeys(brokerMessage, ["type", "deliveryId", "from", "message"])
+          || typeof deliveryId !== "string"
+          || !isSessionInfo(from)
+          || !isMessage(message)
+        ) {
           throw new Error("Invalid message event");
         }
 
-        this.emit("message", from, message, deliveryId);
+        if (message.control !== undefined) {
+          if (this.bossSessionMetadata === undefined) {
+            throw new Error("Ordinary session received unavailable Boss control traffic");
+          }
+          this.emit("control", from, message.control, deliveryId);
+        } else {
+          this.emit("message", from, message, deliveryId);
+        }
         break;
       }
 
       case "delivery_accepted": {
         const { deliveryId, messageId } = brokerMessage;
-        if (typeof deliveryId !== "string" || typeof messageId !== "string") {
+        if (
+          !hasExactDataKeys(brokerMessage, ["type", "messageId", "deliveryId"])
+          || typeof deliveryId !== "string"
+          || typeof messageId !== "string"
+        ) {
           throw new Error("Invalid delivery_accepted message");
         }
 
         const pending = this.pendingSends.get(messageId);
-        if (!pending) {
-          return;
+        if (pending) {
+          if (pending.accepted) {
+            throw new Error("Duplicate delivery_accepted message");
+          }
+          pending.accepted = true;
+          pending.deliveryId = deliveryId;
+          this.emit("delivery_accepted", messageId, deliveryId);
+          break;
         }
-        pending.accepted = true;
-        pending.deliveryId = deliveryId;
+        if (!this.hasQueuedOutboundMessage(messageId)) {
+          throw new Error("Unexpected delivery_accepted message without a pending send or queued outbox message");
+        }
+        if (this.lateDeliveryAcceptances.has(messageId)) {
+          throw new Error("Duplicate delivery_accepted message");
+        }
+        this.lateDeliveryAcceptances.set(messageId, deliveryId);
         this.emit("delivery_accepted", messageId, deliveryId);
         break;
       }
 
       case "delivered": {
         const { deliveryId, messageId } = brokerMessage;
-        if (typeof deliveryId !== "string" || typeof messageId !== "string") {
+        if (
+          !hasExactDataKeys(brokerMessage, ["type", "messageId", "deliveryId"])
+          || typeof deliveryId !== "string"
+          || typeof messageId !== "string"
+        ) {
           throw new Error("Invalid delivered message");
         }
 
-        this.outbox?.remove(messageId);
         const pending = this.pendingSends.get(messageId);
-        if (!pending) {
-          this.emit("outbox_delivered", messageId, deliveryId);
-          return;
+        if (pending) {
+          if (!pending.accepted) {
+            throw new Error("Delivered message arrived before delivery acceptance");
+          }
+          if (pending.deliveryId !== deliveryId) {
+            throw new Error("Delivered message used a mismatched delivery ID");
+          }
+
+          this.outbox?.remove(messageId);
+          this.pendingSends.delete(messageId);
+          this.lateDeliveryAcceptances.delete(messageId);
+          pending.resolve({ id: messageId, accepted: true, delivered: true, deliveryId });
+          break;
+        }
+        if (!this.hasQueuedOutboundMessage(messageId)) {
+          throw new Error("Unexpected delivered message without a pending send or queued outbox message");
+        }
+        const acceptedDeliveryId = this.lateDeliveryAcceptances.get(messageId);
+        if (acceptedDeliveryId === undefined) {
+          throw new Error("Delivered message arrived before delivery acceptance");
+        }
+        if (acceptedDeliveryId !== deliveryId) {
+          throw new Error("Delivered message used a mismatched delivery ID");
         }
 
-        this.pendingSends.delete(messageId);
-        pending.resolve({ id: messageId, accepted: true, delivered: true, deliveryId });
+        this.outbox?.remove(messageId);
+        this.lateDeliveryAcceptances.delete(messageId);
+        this.emit("outbox_delivered", messageId, deliveryId);
         break;
       }
 
       case "delivery_failed": {
         const { accepted, code, messageId, reason } = brokerMessage;
         if (
-          typeof accepted !== "boolean"
-          || typeof code !== "string"
+          !hasExactDataKeys(brokerMessage, ["type", "messageId", "accepted", "code", "reason"])
+          || typeof accepted !== "boolean"
+          || !isDeliveryFailureCode(code)
           || typeof messageId !== "string"
           || typeof reason !== "string"
         ) {
           throw new Error("Invalid delivery_failed message");
         }
 
-        this.outbox?.remove(messageId);
         const pending = this.pendingSends.get(messageId);
-        if (!pending) {
-          this.emit("outbox_failed", messageId, code, reason);
-          return;
+        if (pending) {
+          if (accepted !== pending.accepted) {
+            throw new Error("Delivery failure contradicted the accepted delivery state");
+          }
+
+          this.outbox?.remove(messageId);
+          this.pendingSends.delete(messageId);
+          this.lateDeliveryAcceptances.delete(messageId);
+          pending.resolve({
+            id: messageId,
+            accepted,
+            delivered: false,
+            code,
+            reason,
+            ...(pending.deliveryId !== undefined ? { deliveryId: pending.deliveryId } : {}),
+          });
+          break;
+        }
+        if (!this.hasQueuedOutboundMessage(messageId)) {
+          throw new Error("Unexpected delivery_failed message without a pending send or queued outbox message");
+        }
+        if (accepted !== this.lateDeliveryAcceptances.has(messageId)) {
+          throw new Error("Delivery failure contradicted the accepted delivery state");
         }
 
-        this.pendingSends.delete(messageId);
-        pending.resolve({
-          id: messageId,
-          accepted,
-          delivered: false,
-          code: code as DeliveryFailureCode,
-          reason,
-          ...(pending.deliveryId ? { deliveryId: pending.deliveryId } : {}),
-        });
+        this.outbox?.remove(messageId);
+        this.lateDeliveryAcceptances.delete(messageId);
+        this.emit("outbox_failed", messageId, code, reason);
         break;
       }
 
@@ -674,6 +849,19 @@ export class IntercomClient extends EventEmitter {
   }
 
   send(to: string, options: SendOptions): Promise<SendResult> {
+    return this.sendInternal(to, options);
+  }
+
+  sendControl(to: string, controlValue: BossControlEnvelope): Promise<SendResult> {
+    const control = parseCorrelatedBossControl(controlValue);
+    return this.sendInternal(to, {
+      text: "",
+      messageId: control.messageId,
+      control,
+    });
+  }
+
+  private sendInternal(to: string, options: InternalSendOptions): Promise<SendResult> {
     let socket: net.Socket;
     try {
       socket = this.requireActiveSocket();
@@ -696,9 +884,10 @@ export class IntercomClient extends EventEmitter {
       timestamp: Date.now(),
       replyTo: options.replyTo,
       expectsReply: options.expectsReply,
+      ...(options.control === undefined ? {} : { control: options.control }),
       content: {
         text: options.text,
-        attachments: options.attachments,
+        ...(options.attachments === undefined ? {} : { attachments: options.attachments }),
       },
     };
 
@@ -718,7 +907,15 @@ export class IntercomClient extends EventEmitter {
         reject(error);
       };
       const timeout = setTimeout(() => {
-        if (this.pendingSends.has(messageId)) {
+        const pending = this.pendingSends.get(messageId);
+        if (pending) {
+          if (
+            pending.accepted
+            && pending.deliveryId !== undefined
+            && this.hasQueuedOutboundMessage(messageId)
+          ) {
+            this.lateDeliveryAcceptances.set(messageId, pending.deliveryId);
+          }
           this.pendingSends.delete(messageId);
           wrappedReject(new Error("Send timeout"));
         }
@@ -796,9 +993,24 @@ export class IntercomClient extends EventEmitter {
     if (!socket || !this._sessionId || socket.destroyed || socket.writableEnded || !socket.writable) return;
     for (const entry of this.outbox?.list() ?? []) {
       if (this.pendingSends.has(entry.message.id)) continue;
+      this.lateDeliveryAcceptances.delete(entry.message.id);
+      this.pendingSends.set(entry.message.id, {
+        accepted: false,
+        resolve: (result) => {
+          if (result.delivered && result.deliveryId) {
+            this.emit("outbox_delivered", result.id, result.deliveryId);
+          } else {
+            this.emit("outbox_failed", result.id, result.code, result.reason);
+          }
+        },
+        reject: () => {
+          // The durable entry remains queued and a later connection replays it.
+        },
+      });
       try {
         writeMessage(socket, { type: "send", to: entry.to, message: entry.message });
       } catch {
+        this.pendingSends.delete(entry.message.id);
         return;
       }
     }

@@ -76,13 +76,13 @@ test("writeDefaultWorkerMcpConfig exposes the packaged intercom server to headle
   }
 });
 
-test("parseCciArgs defaults to dangerouslySkipPermissions=true when neither --yolo nor --safe is given", () => {
+test("parseCciArgs is safe by default when neither --yolo nor --safe is given", () => {
   const parsed = parseCciArgs([], {});
-  assert.equal(parsed.dangerouslySkipPermissions, true);
-  assert.equal(parsed.permissionMode, undefined);
+  assert.equal(parsed.dangerouslySkipPermissions, false);
+  assert.equal(parsed.permissionMode, "manual");
 });
 
-test("parseCciArgs --yolo is explicit and equivalent to the default posture", () => {
+test("parseCciArgs --yolo remains an explicit opt-in", () => {
   const parsed = parseCciArgs(["--yolo"], {});
   assert.equal(parsed.dangerouslySkipPermissions, true);
 });
@@ -98,16 +98,20 @@ test("parseCciArgs --dangerously-skip-permissions behaves like --yolo", () => {
   assert.equal(parsed.dangerouslySkipPermissions, true);
 });
 
-test("parseCciArgs --safe opts out of the yolo default and sets permission-mode default", () => {
+test("parseCciArgs --safe opts out of yolo and sets permission-mode manual", () => {
   const parsed = parseCciArgs(["--safe"], {});
   assert.equal(parsed.dangerouslySkipPermissions, false);
-  assert.equal(parsed.permissionMode, "default");
+  assert.equal(parsed.permissionMode, "manual");
 });
 
 test("parseCciArgs --safe respects an explicit --permission-mode", () => {
   const parsed = parseCciArgs(["--permission-mode", "plan", "--safe"], {});
   assert.equal(parsed.dangerouslySkipPermissions, false);
   assert.equal(parsed.permissionMode, "plan");
+});
+
+test("parseCciArgs rejects unknown explicit permission modes", () => {
+  assert.throws(() => parseCciArgs(["--permission-mode", "anything-goes"], {}), /must be one of/);
 });
 
 test("parseCciArgs last of --yolo/--safe wins when both are given", () => {

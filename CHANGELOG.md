@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Pin Core `8316cbab` and add the dormant Stage-B Boss contract foundation: exact base-v3 capability parsing, optional authoritative bindings, feature-aware run ACLs/discovery, and correlated typed-control validation. The production MCP surface remains unavailable until protected Controller transport and durable dispatch exist.
+- Make `cci` and worker launches safe by default, validate Claude permission modes, reject appended permission overrides, and force Adversary/Council workers and their subagents under a read-only `plan` ceiling.
+- Reject every appended single-dash option cluster for hardened Claude roles, including Commander forms such as `-pwoutside`, before configuration acceptance or process spawn.
+- Keep Core as one required runtime peer by externalizing its root and subpath imports from every bundle, with exact commit/artifact provenance gates for Core `0.1.0`.
 - Reject competing live runtimes that claim an active stable session ID while preserving legitimate reconnects and pending deliveries.
 - Add ID-free `oldest`/`latest` selection for multiple pending asks from one sender, hide protocol IDs from pending output, and refuse a second unresolved ask to the same recipient.
 - Automatically reconnect persistent workers and MCP runtimes with their stable Intercom identity after broker restarts.

@@ -31,6 +31,7 @@ test("tools/list includes intercom tools", async () => {
   assert.ok(tools.some((tool) => tool.name === "intercom_list"));
   assert.ok(tools.some((tool) => tool.name === "intercom_ask"));
   assert.ok(tools.some((tool) => tool.name === "intercom_reply"));
+  assert.equal(tools.some((tool) => tool.name === "boss_reviewer"), false);
   const reply = tools.find((tool) => tool.name === "intercom_reply") as any;
   assert.ok(reply.inputSchema.properties.which);
   assert.equal(reply.inputSchema.properties.reply_to, undefined);
@@ -133,6 +134,29 @@ test("tools/call reports validation errors as tool errors", async () => {
 
   assert.equal((response?.result as any).isError, true);
   assert.match(((response?.result as any).content[0]).text, /message must be/);
+});
+
+test("model-facing attachment arrays and entries require exact dense data shapes", async () => {
+  const cases: unknown[] = [];
+  const sparse: unknown[] = [];
+  sparse.length = 1;
+  cases.push(sparse);
+  const customPrototype = [{ type: "file", name: "a", content: "b" }];
+  Object.setPrototypeOf(customPrototype, Object.create(Array.prototype));
+  cases.push(customPrototype);
+  const symbol = [{ type: "file", name: "a", content: "b" }];
+  Object.defineProperty(symbol, Symbol("extra"), { value: true });
+  cases.push(symbol);
+  cases.push([{ type: "file", name: "a", content: "b", Boss: {} }]);
+
+  for (const attachments of cases) {
+    const response = await handleMcpRequest({
+      id: 40,
+      method: "tools/call",
+      params: { name: "intercom_send", arguments: { to: "worker", message: "hello", attachments } },
+    }, fakeRuntime());
+    assert.equal((response?.result as any).isError, true);
+  }
 });
 
 test("notifications do not receive responses", async () => {

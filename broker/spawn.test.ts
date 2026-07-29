@@ -157,7 +157,32 @@ test("isBrokerHealthOkMessage pins the remote policy semantic contract", () => {
   assert.equal(isBrokerHealthOkMessage({ ...compatible, remoteAccess: undefined }, "req-1"), false);
   assert.equal(isBrokerHealthOkMessage({ ...compatible, remoteAccess: { ...compatible.remoteAccess, policySemanticsHash: "wrong" } }, "req-1"), false);
   assert.equal(isBrokerHealthOkMessage({ ...compatible, requestId: "req-2" }, "req-1"), false);
+  assert.equal(isBrokerHealthOkMessage({ ...compatible, Boss: {} }, "req-1"), false);
   assert.equal(isBrokerHealthOkMessage("ok", "req-1"), false);
+});
+
+test("isBrokerHealthOkMessage rejects outer and nested Proxies with zero traps", () => {
+  let trapCount = 0;
+  const proxy = new Proxy({}, {
+    has() {
+      trapCount += 1;
+      throw new Error("has trap");
+    },
+    getPrototypeOf() {
+      trapCount += 1;
+      throw new Error("prototype trap");
+    },
+  });
+  assert.equal(isBrokerHealthOkMessage(proxy, "req-1"), false);
+  assert.equal(isBrokerHealthOkMessage({
+    type: "health_ok",
+    requestId: "req-1",
+    protocol: "pi-intercom",
+    version: 3,
+    endpoint: "local",
+    remoteAccess: proxy,
+  }, "req-1"), false);
+  assert.equal(trapCount, 0);
 });
 
 test("stopBrokerProcess terminates an incompatible broker PID", async () => {

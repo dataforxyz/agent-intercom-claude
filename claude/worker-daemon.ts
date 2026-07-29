@@ -254,8 +254,12 @@ export class VirtualClaudeAgent {
         sessionId: this.sessionId ?? undefined,
         model: this.agent.model,
         appendSystemPrompt: this.agent.instructions,
+        // Historical worker configs omitted both permission fields. Preserve
+        // their noninteractive behavior; hardened roles are normalized to an
+        // explicit plan mode before a VirtualClaudeAgent can be constructed.
         permissionMode: this.agent.permissionMode ?? "bypassPermissions",
         dangerouslySkipPermissions: this.agent.dangerouslySkipPermissions,
+        permissionCeiling: this.agent.permissionCeiling,
         addDirs: this.agent.addDirs,
         mcpConfig: this.agent.mcpConfig,
         claudeCommand: this.claudeCommand,
