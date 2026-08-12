@@ -30,6 +30,7 @@
     "durable-json.ts",
     "outbound-outbox.ts",
     ".claude-plugin/**/*",
+    "monitors/**/*",
     ".mcp.json",
     "README.md",
     "CHANGELOG.md",

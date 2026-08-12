@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Include the Claude Monitor declaration in the npm package and verify the packed plugin metadata, Monitor manifest, and inbox runtime together so `cci --tui` can inject inbound Intercom messages.
 - Add a version-gated native Claude cross-session transport for live `cci --tui` sessions, preserving the MCP/plugin/Monitor transport as an explicit fallback. `auto` enables native only for verified Claude Code 2.1.220–2.1.226, falls back to MCP when native attachment fails, and explicit native selection fails closed.
 - Enable Claude's native cross-session feature flag automatically, follow `CLAUDE_CONFIG_DIR` profile registries, and instruct live Claude sessions to relay peer answers with the built-in `SendMessage` tool. A live authenticated Claude Code 2.1.226 socket round trip verified injection and reply delivery.
 - Apply the same `auto | native | mcp` selection to headless `cci`/`ccim` and worker JSON configuration; native headless turns keep direct broker wake/reply handling while omitting the packaged Intercom MCP server.

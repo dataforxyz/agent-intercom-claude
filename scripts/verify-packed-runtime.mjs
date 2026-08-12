@@ -80,6 +80,14 @@ try {
     throw new Error("Packed adapter contains a private Core module tree");
   }
 
+  for (const path of [
+    "package/.claude-plugin/plugin.json",
+    "package/monitors/monitors.json",
+    "package/dist/inbox-monitor.mjs",
+  ]) {
+    if (!entries.has(path)) throw new Error(`Packed adapter is missing ${path.slice("package/".length)}`);
+  }
+
   for (const bundle of bundles) {
     const entry = entries.get(`package/dist/${bundle}`);
     if (!entry) throw new Error(`Packed adapter is missing dist/${bundle}`);
