@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Add a version-gated native Claude cross-session transport for live `cci --tui` sessions, preserving the MCP/plugin/Monitor transport as an explicit fallback. `auto` enables native only for verified Claude Code 2.1.220–2.1.226, falls back to MCP when native attachment fails, and explicit native selection fails closed.
-- Enable Claude's native cross-session feature flag automatically, follow `CLAUDE_CONFIG_DIR` profile registries, and instruct live Claude sessions to relay peer answers with the built-in `SendMessage` tool. A live authenticated Claude Code 2.1.226 socket round trip verified injection and reply delivery.
+- Add a minimum-version-gated native Claude cross-session transport for live `cci --tui` sessions, preserving the MCP/plugin/Monitor transport as an explicit fallback. `auto` attempts native on Claude Code 2.1.220 and newer, falls back to MCP when native attachment fails, and explicit native selection fails closed.
+- Enable Claude's native cross-session feature flag automatically, follow `CLAUDE_CONFIG_DIR` profile registries, and instruct live Claude sessions to relay peer answers with the built-in `SendMessage` tool. Live authenticated socket round trips on Claude Code 2.1.226 and 2.1.235 verified native injection and blocking reply delivery.
 - Apply the same `auto | native | mcp` selection to headless `cci`/`ccim` and worker JSON configuration; native headless turns keep direct broker wake/reply handling while omitting the packaged Intercom MCP server.
 - Credit the MIT-licensed `pi-claude-link` registry/socket protocol implementation adapted by the native bridge.
 - Pin Core `8316cbab` and add the dormant Stage-B Boss contract foundation: exact base-v3 capability parsing, optional authoritative bindings, feature-aware run ACLs/discovery, and correlated typed-control validation. The production MCP surface remains unavailable until protected Controller transport and durable dispatch exist.
