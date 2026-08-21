@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 
 export const CLAUDE_INTERCOM_TRANSPORT_ENV = "CLAUDE_INTERCOM_TRANSPORT";
 export const MIN_NATIVE_CLAUDE_VERSION = "2.1.220";
-export const MAX_NATIVE_CLAUDE_VERSION = "2.1.226";
 
 export type ClaudeIntercomTransport = "auto" | "native" | "mcp";
 export type ResolvedClaudeIntercomTransport = Exclude<ClaudeIntercomTransport, "auto">;
@@ -41,8 +40,7 @@ function compareVersions(left: string, right: string): number {
 }
 
 export function isNativeClaudeVersionCompatible(version: string): boolean {
-  return compareVersions(version, MIN_NATIVE_CLAUDE_VERSION) >= 0
-    && compareVersions(version, MAX_NATIVE_CLAUDE_VERSION) <= 0;
+  return compareVersions(version, MIN_NATIVE_CLAUDE_VERSION) >= 0;
 }
 
 export function probeClaudeVersion(command = "claude"): ClaudeVersionProbe {
@@ -68,8 +66,8 @@ export function probeClaudeVersion(command = "claude"): ClaudeVersionProbe {
     version,
     compatible,
     reason: compatible
-      ? `Claude ${version} is within the native transport compatibility window ${MIN_NATIVE_CLAUDE_VERSION}-${MAX_NATIVE_CLAUDE_VERSION}`
-      : `Claude ${version} is outside the verified native transport compatibility window ${MIN_NATIVE_CLAUDE_VERSION}-${MAX_NATIVE_CLAUDE_VERSION}`,
+      ? `Claude ${version} meets the native transport minimum version ${MIN_NATIVE_CLAUDE_VERSION}`
+      : `Claude ${version} is below the native transport minimum version ${MIN_NATIVE_CLAUDE_VERSION}`,
   };
 }
 

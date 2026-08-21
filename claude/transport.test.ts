@@ -29,14 +29,15 @@ test("transport parser accepts only auto, native, and mcp", () => {
   assert.throws(() => parseClaudeIntercomTransport("monitor"), /auto, native, or mcp/);
 });
 
-test("Claude version parsing and compatibility are bounded to verified versions", () => {
+test("Claude native compatibility requires the minimum version without a future ceiling", () => {
   assert.equal(parseClaudeVersion("2.1.220 (Claude Code)"), "2.1.220");
   assert.equal(parseClaudeVersion("Claude Code v2"), null);
   assert.equal(isNativeClaudeVersionCompatible("2.1.219"), false);
   assert.equal(isNativeClaudeVersionCompatible("2.1.220"), true);
   assert.equal(isNativeClaudeVersionCompatible("2.1.224"), true);
-  assert.equal(isNativeClaudeVersionCompatible("2.1.226"), true);
-  assert.equal(isNativeClaudeVersionCompatible("2.1.227"), false);
+  assert.equal(isNativeClaudeVersionCompatible("2.1.235"), true);
+  assert.equal(isNativeClaudeVersionCompatible("2.1.236"), true);
+  assert.equal(isNativeClaudeVersionCompatible("99.0.0"), true);
 });
 
 test("auto selects native only after a compatible version probe", () => {
