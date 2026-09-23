@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "fs";
-import { join, resolve } from "path";
-import { homedir } from "os";
+import { join } from "path";
+import { getIntercomDirPath } from "./broker/paths.ts";
 
 export const DEFAULT_ASK_TIMEOUT_MS = 45 * 1000;
 export const MAX_ASK_TIMEOUT_MS = 120 * 1000;
@@ -66,10 +66,7 @@ export interface IntercomConfig {
 }
 
 export function getConfigPath(): string {
-  const agentDir = process.env.PI_CODING_AGENT_DIR
-    ? resolve(process.env.PI_CODING_AGENT_DIR)
-    : join(homedir(), ".pi", "agent");
-  return join(agentDir, "intercom", "config.json");
+  return join(getIntercomDirPath(), "config.json");
 }
 
 const defaults: IntercomConfig = {
