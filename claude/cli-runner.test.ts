@@ -31,6 +31,19 @@ function optionSpellingsFromStaticDeclaration(declaration: string): string[] {
   return matches.map((match) => match.replace(/^, /, ""));
 }
 
+test("Claude turns keep a relative INTERCOM_DIR anchored to the parent cwd", async () => {
+  const root = mkdtempSync(join(tmpdir(), "claude-runtime-env-"));
+  const command = join(root, "claude");
+  writeFileSync(command, '#!/bin/sh\ncat >/dev/null\nprintf \'{"result":"%s"}\\n\' "$INTERCOM_DIR"\n', { mode: 0o700 });
+  try {
+    const result = await runClaudeTurn({ prompt: "probe", cwd: root, claudeCommand: command, env: { INTERCOM_DIR: "relative-state" } });
+    assert.equal(result.isError, false);
+    assert.equal(result.result, resolve("relative-state"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("buildClaudeArgs has the base -p --output-format json flags", () => {
   const args = buildClaudeArgs({ prompt: "hello", cwd: "/tmp" });
   assert.deepEqual(args.slice(0, 3), ["-p", "--output-format", "json"]);

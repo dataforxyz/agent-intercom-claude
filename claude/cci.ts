@@ -335,6 +335,7 @@ async function runCciTui(options: CciOptions, id: string, name: string): Promise
     stdio: "inherit",
     env: {
       ...process.env,
+      ...(process.env.INTERCOM_DIR?.trim() ? { INTERCOM_DIR: getIntercomDirPath() } : {}),
       CLAUDE_INTERCOM_NAME: name,
       CLAUDE_INTERCOM_SESSION_ID: id,
       ...(options.model ? { CLAUDE_INTERCOM_MODEL: options.model } : {}),

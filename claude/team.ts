@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PARTICIPANT_STATES, TERMINAL_PARTICIPANT_STATES } from "@dataforxyz/agent-intercom-core/boss";
 import type { BossSessionMetadata } from "../types.ts";
-import { getAgentDirPath } from "../broker/paths.ts";
+import { getAgentDirPath, getIntercomDirPath } from "../broker/paths.ts";
 
 export interface TeamSession {
   id: string;
@@ -72,9 +72,9 @@ function connectedTo(sessions: TeamSession[], target: string): boolean {
   return sessions.some((session) => session.id === target || session.name?.toLowerCase() === normalized);
 }
 
-async function readWorkers(agentDir: string): Promise<StoredWorker[]> {
+async function readWorkers(intercomDir: string): Promise<StoredWorker[]> {
   try {
-    const parsed = JSON.parse(await readFile(join(agentDir, "intercom", "orchestrator", "workers.json"), "utf8")) as { workers?: unknown };
+    const parsed = JSON.parse(await readFile(join(intercomDir, "orchestrator", "workers.json"), "utf8")) as { workers?: unknown };
     return Array.isArray(parsed.workers) ? parsed.workers as StoredWorker[] : [];
   } catch {
     return [];
@@ -265,7 +265,7 @@ export async function resolveIntercomTeam(input: {
   agentDir?: string;
 }): Promise<IntercomTeam> {
   const env = input.env ?? process.env;
-  const workers = await readWorkers(input.agentDir ?? getAgentDirPath());
+  const workers = await readWorkers(getIntercomDirPath(input.agentDir ?? getAgentDirPath(env), env));
   const selfSession = input.sessions.find((session) => session.id === input.selfId);
   if (!selfSession?.boss) return resolveLegacyTeam(input, workers, env);
 

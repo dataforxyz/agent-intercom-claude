@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { getIntercomDirPath } from "../broker/paths.ts";
 import {
   assertNoPermissionOverrides,
   bindHardenedClaudePaths,
@@ -110,11 +111,13 @@ export function runClaudeTurn(options: ClaudeTurnOptions): Promise<ClaudeTurnRes
   return new Promise((resolve, reject) => {
     const command = options.claudeCommand ?? "claude";
     const launch = prepareClaudeLaunch(options);
+    const env = { ...process.env, ...options.env };
+    if (env.INTERCOM_DIR?.trim()) env.INTERCOM_DIR = getIntercomDirPath(undefined, env);
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(command, launch.args, {
         cwd: launch.cwd,
-        env: { ...process.env, ...options.env },
+        env,
         stdio: ["pipe", "pipe", "pipe"],
       });
     } finally {
