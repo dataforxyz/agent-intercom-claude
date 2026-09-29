@@ -25,6 +25,7 @@
     "!scripts/build-protected-provider.mjs",
     "skills/**/*",
     "commands/**/*",
+    "monitors/**/*",
     "types.ts",
     "config.ts",
     "durable-json.ts",

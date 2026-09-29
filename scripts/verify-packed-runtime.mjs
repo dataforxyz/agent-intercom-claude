@@ -91,7 +91,26 @@ try {
       throw new Error(`Packed dist/${bundle} does not retain its Core peer import`);
     }
   }
-  console.log(`Verified ${bundles.length} packed bundles use required Core peer 0.1.0`);
+  // Claude reads plugin.json from the installed tree, so every path it names
+  // has to survive `files` filtering. A declared path that does not ship makes
+  // Claude drop that component silently: a missing monitors manifest is a
+  // plugin whose inbound messages never wake the session.
+  const pluginEntry = entries.get("package/.claude-plugin/plugin.json");
+  if (!pluginEntry) throw new Error("Packed adapter is missing .claude-plugin/plugin.json");
+  const plugin = JSON.parse(pluginEntry.toString("utf8"));
+  const packedPaths = [...entries.keys()];
+  for (const field of ["skills", "commands", "monitors", "mcpServers"]) {
+    const declared = plugin[field];
+    if (typeof declared !== "string") continue;
+    const relative = declared.replace(/^\.\//, "");
+    const packed = `package/${relative}`;
+    const shipped = declared.endsWith("/")
+      ? packedPaths.some((path) => path.startsWith(packed))
+      : entries.has(packed);
+    if (!shipped) throw new Error(`plugin.json declares ${field} at ${declared}, which the pack does not ship`);
+  }
+
+  console.log(`Verified ${bundles.length} packed bundles use required Core peer 0.1.0 and every plugin.json path ships`);
 } finally {
   if (temp) rmSync(temp, { recursive: true, force: true });
 }
